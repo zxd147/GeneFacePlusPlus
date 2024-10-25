@@ -17,6 +17,7 @@ import sys
 import cv2
 import argparse
 import tqdm
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from utils.commons.multiprocess_utils import multiprocess_run_tqdm
 from data_gen.utils.mp_feature_extractors.face_landmarker import MediapipeLandmarker, read_video_to_frames
 from deep_3drecon.deep_3drecon_models.bfm import ParametricFaceModel

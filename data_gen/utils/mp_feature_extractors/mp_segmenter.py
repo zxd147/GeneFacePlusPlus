@@ -1,9 +1,13 @@
 import os
 import copy
+import sys
+
 import numpy as np
 import tqdm
 import mediapipe as mp
 import torch
+
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from utils.commons.multiprocess_utils import multiprocess_run_tqdm, multiprocess_run

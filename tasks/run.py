@@ -1,6 +1,7 @@
 import os
 import sys
 sys.path.append('./')
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 
 os.environ["OMP_NUM_THREADS"] = "1"
 

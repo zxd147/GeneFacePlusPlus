@@ -1,10 +1,13 @@
+import sys
+
 from transformers import Wav2Vec2Processor, HubertModel
 import soundfile as sf
 import numpy as np
 import torch
 import os
-from utils.commons.hparams import set_hparams, hparams
 
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
+from utils.commons.hparams import set_hparams, hparams
 
 wav2vec2_processor = None
 hubert_model = None
@@ -15,10 +18,12 @@ def get_hubert_from_16k_wav(wav_16k_name):
     hubert = get_hubert_from_16k_speech(speech_16k)
     return hubert
 
+
 @torch.no_grad()
 def get_hubert_from_16k_speech(speech, device="cuda:0"):
     global hubert_model, wav2vec2_processor
-    local_path = '/home/tiger/.cache/huggingface/hub/models--facebook--hubert-large-ls960-ft/snapshots/ece5fabbf034c1073acae96d5401b25be96709d8'
+    # local_path = '/home/tiger/.cache/huggingface/hub/models--facebook--hubert-large-ls960-ft/snapshots/ece5fabbf034c1073acae96d5401b25be96709d8'
+    local_path = './hubert-large-ls960-ft'
     if hubert_model is None:
         print("Loading the HuBERT Model...")
         if os.path.exists(local_path):
@@ -33,10 +38,10 @@ def get_hubert_from_16k_speech(speech, device="cuda:0"):
         else:
             wav2vec2_processor = Wav2Vec2Processor.from_pretrained("facebook/hubert-large-ls960-ft")
 
-    if speech.ndim ==2:
-        speech = speech[:, 0] # [T, 2] ==> [T,]
-    
-    input_values_all = wav2vec2_processor(speech, return_tensors="pt", sampling_rate=16000).input_values # [1, T]
+    if speech.ndim == 2:
+        speech = speech[:, 0]  # [T, 2] ==> [T,]
+
+    input_values_all = wav2vec2_processor(speech, return_tensors="pt", sampling_rate=16000).input_values  # [1, T]
     input_values_all = input_values_all.to(device)
     # For long audio sequence, due to the memory limitation, we cannot process them in one run
     # HuBERT process the wav with a CNN of stride [5,2,2,2,2,2], making a stride of 320
@@ -49,7 +54,7 @@ def get_hubert_from_16k_speech(speech, device="cuda:0"):
     stride = 320
     clip_length = stride * 1000
     num_iter = input_values_all.shape[1] // clip_length
-    expected_T = (input_values_all.shape[1] - (kernel-stride)) // stride
+    expected_T = (input_values_all.shape[1] - (kernel - stride)) // stride
     res_lst = []
     for i in range(num_iter):
         if i == 0:
@@ -59,21 +64,21 @@ def get_hubert_from_16k_speech(speech, device="cuda:0"):
             start_idx = clip_length * i
             end_idx = start_idx + (clip_length - stride + kernel)
         input_values = input_values_all[:, start_idx: end_idx]
-        hidden_states = hubert_model.forward(input_values).last_hidden_state # [B=1, T=pts//320, hid=1024]
+        hidden_states = hubert_model.forward(input_values).last_hidden_state  # [B=1, T=pts//320, hid=1024]
         res_lst.append(hidden_states[0])
     if num_iter > 0:
         input_values = input_values_all[:, clip_length * num_iter:]
     else:
         input_values = input_values_all
 
-    if input_values.shape[1] >= kernel: # if the last batch is shorter than kernel_size, skip it            
-        hidden_states = hubert_model(input_values).last_hidden_state # [B=1, T=pts//320, hid=1024]
+    if input_values.shape[1] >= kernel:  # if the last batch is shorter than kernel_size, skip it
+        hidden_states = hubert_model(input_values).last_hidden_state  # [B=1, T=pts//320, hid=1024]
         res_lst.append(hidden_states[0])
-    ret = torch.cat(res_lst, dim=0).cpu() # [T, 1024]
+    ret = torch.cat(res_lst, dim=0).cpu()  # [T, 1024]
 
     assert abs(ret.shape[0] - expected_T) <= 1
-    if ret.shape[0] < expected_T: # if skipping the last short 
-        ret = torch.cat([ret, ret[:, -1:, :].repeat([1,expected_T-ret.shape[0],1])], dim=1)
+    if ret.shape[0] < expected_T:  # if skipping the last short
+        ret = torch.cat([ret, ret[:, -1:, :].repeat([1, expected_T - ret.shape[0], 1])], dim=1)
     else:
         ret = ret[:expected_T]
 
@@ -82,6 +87,7 @@ def get_hubert_from_16k_speech(speech, device="cuda:0"):
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
+
     parser = ArgumentParser()
     parser.add_argument('--video_id', type=str, default='May', help='')
     args = parser.parse_args()

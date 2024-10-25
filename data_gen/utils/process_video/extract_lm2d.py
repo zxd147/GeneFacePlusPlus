@@ -7,6 +7,7 @@ import pickle
 import tqdm
 import numpy as np
 import mediapipe as mp
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from utils.commons.multiprocess_utils import multiprocess_run_tqdm
 from utils.commons.os_utils import multiprocess_glob
 from data_gen.utils.mp_feature_extractors.face_landmarker import MediapipeLandmarker

@@ -1,4 +1,6 @@
 import os
+import sys
+
 import numpy as np
 import math
 import json
@@ -7,6 +9,7 @@ import torch
 import tqdm
 import cv2
 
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from data_util.face3d_helper import Face3DHelper
 from utils.commons.euler2rot import euler_trans_2_c2w, c2w_to_euler_trans
 from data_gen.utils.process_video.euler2quaterion import euler2quaterion, quaterion2euler

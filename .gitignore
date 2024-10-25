@@ -180,7 +180,7 @@ venv_113/*
 experiments/trials
 flame_3drecon/*
 
-temp/
+li_head_929/
 /kill.sh
 /datasets
 data_util/imagenet_classes.txt
@@ -210,3 +210,5 @@ deep_3drecon/BFM/facemodel_info.mat
 deep_3drecon/BFM/index_mp468_from_mesh35709.npy
 deep_3drecon/BFM/mediapipe_in_bfm53201.npy
 deep_3drecon/BFM/std_exp.txt
+temp
+output

@@ -1,6 +1,9 @@
+import sys
+
 import cv2
 import os
 import numpy as np
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from utils.commons.multiprocess_utils import multiprocess_run_tqdm
 from scipy.ndimage import binary_erosion, binary_dilation
 

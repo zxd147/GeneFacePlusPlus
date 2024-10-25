@@ -1,3 +1,6 @@
+import sys
+
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 import os
 
 
