@@ -1,7 +1,10 @@
+import sys
+
 import numpy as np
 import torch
 import math
 import numba
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from scipy.spatial.transform import Rotation as R
 
 def euler2quaterion(euler, use_radian=True):

@@ -1,4 +1,7 @@
+import sys
+
 import numpy as np
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from data_util.face3d_helper import Face3DHelper
 from utils.commons.tensor_utils import convert_to_tensor
 

@@ -1,5 +1,8 @@
 import os, glob
+import sys
+
 import cv2
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from utils.commons.os_utils import multiprocess_glob
 from utils.commons.multiprocess_utils import multiprocess_run_tqdm
 

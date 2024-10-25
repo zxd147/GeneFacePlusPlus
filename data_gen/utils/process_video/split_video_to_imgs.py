@@ -1,4 +1,7 @@
 import os, glob
+import sys
+
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from utils.commons.multiprocess_utils import multiprocess_run_tqdm
 
 from data_gen.utils.path_converter import PathConverter, pc

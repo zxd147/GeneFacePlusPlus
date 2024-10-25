@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import torch
 import glob
@@ -5,6 +7,8 @@ import os
 import tqdm
 import librosa
 import parselmouth
+
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from utils.commons.pitch_utils import f0_to_coarse
 from utils.commons.multiprocess_utils import multiprocess_run_tqdm
 from utils.commons.os_utils import multiprocess_glob

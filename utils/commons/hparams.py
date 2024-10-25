@@ -92,8 +92,10 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         parser.add_argument('--reset', action='store_true', help='reset hparams')
         parser.add_argument('--remove', action='store_true', help='remove old ckpt')
         parser.add_argument('--debug', action='store_true', help='debug')
-        parser.add_argument('--start_rank', type=int, default=0, help='the start rank id for DDP, keep 0 when single-machine multi-GPU')
-        parser.add_argument('--world_size', type=int, default=-1, help='the total number of GPU used across all machines, keep -1 for single-machine multi-GPU')
+        parser.add_argument('--start_rank', type=int, default=0,
+                            help='the start rank id for DDP, keep 0 when single-machine multi-GPU')
+        parser.add_argument('--world_size', type=int, default=-1,
+                            help='the total number of GPU used across all machines, keep -1 for single-machine multi-GPU')
         parser.add_argument('--init_method', type=str, default='tcp', help='method to init ddp, use tcp or file')
 
         args, unknown = parser.parse_known_args()
@@ -101,7 +103,8 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
             print("| set_hparams Unknow hparams: ", unknown)
     else:
         args = Args(config=config, exp_name=exp_name, hparams=hparams_str,
-                    infer=False, validate=False, reset=False, debug=False, remove=False, start_rank=0, world_size=-1, init_method='tcp')
+                    infer=False, validate=False, reset=False, debug=False, remove=False, start_rank=0, world_size=-1,
+                    init_method='tcp')
     global hparams
     assert args.config != '' or args.exp_name != ''
     if args.config != '':
@@ -174,7 +177,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
     hparams_['validate'] = args.validate
     hparams_['exp_name'] = args.exp_name
 
-    hparams_['start_rank'] = args.start_rank # useful for multi-machine training
+    hparams_['start_rank'] = args.start_rank  # useful for multi-machine training
     hparams_['world_size'] = args.world_size
     hparams_['init_method'] = args.init_method
 
@@ -189,6 +192,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         #     print(f"\033[;33;m{k}\033[0m: {v}, ", end="\n" if i % 5 == 4 else "")
         global_print_hparams = False
     return hparams_
+
 
 if __name__ == '__main__':
     set_hparams('checkpoints/1205_os_secc2planes/os_secc2plane_trigridv2/config.yaml')

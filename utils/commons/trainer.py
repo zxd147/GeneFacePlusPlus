@@ -520,7 +520,7 @@ class Trainer:
             if hparams.get("ckpt_milestone_interval", 10_0000) != 0 and get_ckpt_step_fn(old_ckpt) % hparams.get("ckpt_milestone_interval", 10_0000) == 0:
                 pass
             else:
-                remove_file(old_ckpt)
+                # remove_file(old_ckpt)
                 logging.info(f'Delete ckpt: {os.path.basename(old_ckpt)}')
         current = None
         if logs is not None and self.monitor_key in logs:

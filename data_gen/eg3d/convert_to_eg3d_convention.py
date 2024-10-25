@@ -1,6 +1,9 @@
+import sys
+
 import numpy as np
 import torch
 import copy
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from utils.commons.tensor_utils import convert_to_tensor, convert_to_np
 from deep_3drecon.deep_3drecon_models.bfm import ParametricFaceModel
 

@@ -1,4 +1,6 @@
 import os
+import sys
+
 os.environ["OMP_NUM_THREADS"] = "1"
 import random
 import glob
@@ -6,6 +8,7 @@ import cv2
 import tqdm
 import numpy as np
 from typing import Union
+sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from utils.commons.tensor_utils import convert_to_np
 from utils.commons.os_utils import multiprocess_glob
 import pickle
