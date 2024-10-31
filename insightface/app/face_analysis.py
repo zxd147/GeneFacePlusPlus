@@ -61,7 +61,7 @@ class FaceAnalysis:
                                              max_num=max_num,
                                              metric='default')
 
-        #print(bboxes)
+        # print(bboxes)
         if len(bboxes) > 0:
             bboxes[0][1] = bboxes[0][1] - offset
             bboxes[0][3] = bboxes[0][3] - offset
@@ -82,11 +82,9 @@ class FaceAnalysis:
             ret.append(face)
         return ret
 
+    # 返回 2D 的 106 个关键点坐标
     def get_landmark(self, img, max_num=1, offset=0):
-        bboxes, kpss = self.det_model.detect(img,
-                                             max_num=max_num,
-                                             metric='default')
-
+        bboxes, kpss = self.det_model.detect(img, max_num=max_num, metric='default')
         if len(bboxes) > 0:
             bboxes[0][1] = bboxes[0][1] - offset
             bboxes[0][3] = bboxes[0][3] - offset
