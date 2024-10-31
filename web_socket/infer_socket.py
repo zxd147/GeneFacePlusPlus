@@ -48,50 +48,6 @@ message_queue = queue.Queue()  # add
 inference_queue = queue.Queue()  # add
 
 
-# 处理客户端连接
-async def handle_client(reader, writer):
-    data = await reader.read(2048)
-    message = data.decode("utf-8")
-    print(f'Received: {message}')
-    logger.info(f'{time.time()} 当前收到推理信息 {message}')
-    # 将接收到的消息放入队列
-    message_queue.put(message)
-    writer.close()
-    await writer.wait_closed()
-
-
-# socket服务端
-async def start_server():
-    server = await asyncio.start_server(handle_client, socket_ip, int(socket_port))
-    async with server:
-        await server.serve_forever()
-
-
-# 从队列中取出消息,进行推理
-async def process_messages():
-    while True:
-        try:
-            if not message_queue.empty():
-                message = message_queue.get()
-                # if message is not None: # 原来是这样做的 !=
-                #     await inference(message)
-                # else:
-                #     print('从队列中取出的消息为 None,跳过处理')
-                #     pass
-
-                if message is None:
-                    await asyncio.sleep(1)  # 暂停 1 秒钟
-                else:
-                    await inference(message)
-
-            else:
-                # print('当前队列为空，稍等')
-                pass
-        except Exception as e:
-            print("Error 出现的错误", e)
-        await asyncio.sleep(1)  # 暂停 1 秒钟
-
-
 async def websocket_handler(websocket, path):
     global gWsk_remote
     # 当有新的 WebSocket 连接建立时
@@ -127,11 +83,56 @@ async def websocket_handler(websocket, path):
         print(f"客户端关闭")
 
 
+# 处理客户端连接
+async def handle_client(reader, writer):
+    data = await reader.read(2048)  # 1024
+    message = data.decode("utf-8")
+    print(f'Received: {message}')
+    logger.info(f'{time.time()} 当前收到推理信息 {message}')
+    # 将接收到的消息放入队列
+    message_queue.put(message)
+    writer.close()
+    await writer.wait_closed()
+
+
+# socket服务端
+async def start_server():
+    server = await asyncio.start_server(handle_client, socket_ip, int(socket_port))
+    async with server:
+        await server.serve_forever()
+
+
+# 从队列中取出消息,进行推理
+async def process_messages():
+    while True:
+        try:
+            if not message_queue.empty():
+                message = message_queue.get()
+                # if message is not None:
+                #     await inference(message)
+                # else:
+                #     print('从队列中取出的消息为 None,跳过处理')
+                #     pass
+
+                if not message:
+                    await asyncio.sleep(1)  # 暂停 1 秒钟
+                else:
+                    await inference(message)
+
+            else:
+                # print('当前队列为空，稍等')
+                pass
+        except Exception as e:
+            print("Error 出现的错误", e)
+        await asyncio.sleep(0.5)  # 暂停 1 秒钟
+
+
 async def main():
     # websocket服务端开启服务
+    websocket_host = "0.0.0.0"
     websocket_port = 5465
-    start_websocket = websockets.serve(websocket_handler, "0.0.0.0", websocket_port)
-    print(f"WebSocket server started, Listening on ws://0.0.0.0:{websocket_port}")
+    start_websocket = websockets.serve(websocket_handler, websocket_host, websocket_port)
+    print(f"WebSocket server started, Listening on ws://{websocket_host}:{websocket_port}")
     await asyncio.gather(
         start_server(),
         process_messages(),
@@ -208,7 +209,7 @@ async def inference(line):
     cur_info = line.replace("'", "\"")
     try:
         cur_json = json.loads(cur_info)
-    except Exception as e:
+    except json.JSONDecodeError as e:
         print(f"【时间】{time.ctime()}  读取json信息【错误】{e}")
         return
 
@@ -244,7 +245,6 @@ async def inference(line):
 
 
 '''------------------------------------'''
-
 
 '''================文件上传内容==============='''
 
