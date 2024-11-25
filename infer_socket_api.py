@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import queue
-import socket
 import time
 
 import websockets
