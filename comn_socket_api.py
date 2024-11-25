@@ -8,6 +8,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
 
 from config.uitls import read_json_file
 
@@ -59,17 +61,31 @@ class LiveInferenceResponse(BaseModel):
     timestamp: int = Field(..., description="时间戳")
 
 
-app = FastAPI()
+class BasicAuthMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, secret_key: str):
+        super().__init__(app)
+        self.required_credentials = secret_key
 
+    async def dispatch(self, request: StarletteRequest, call_next):
+        authorization: str = request.headers.get('Authorization')
+        if authorization and authorization.startswith('Bearer '):
+            provided_credentials = authorization.split(' ')[1]
+            # 比较提供的令牌和所需的令牌
+            if provided_credentials == self.required_credentials:
+                return await call_next(request)
+        # 返回一个带有自定义消息的JSON响应
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "Unauthorized: Invalid or missing credentials"},
+            headers={'WWW-Authenticate': 'Bearer realm="Secure Area"'}
+        )
+
+
+geneface_app = FastAPI()
+secret_key = os.getenv('GENEFACE-SECRET-KEY', 'sk-geneface')
 # CORS 中间件配置
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源
-    allow_credentials=True,
-    allow_methods=["*"],  # 允许所有方法
-    allow_headers=["*"],  # 允许所有头
-)
-
+geneface_app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'], allow_headers=['*'], )
+# geneface_app.add_middleware(BasicAuthMiddleware, secret_key=secret_key)
 # 初始化变量
 remote_dict = {}
 ip_mapping = {}
@@ -106,8 +122,8 @@ def send_data_to_modeler(inference_info):
         client_socket.close()
 
 
-@app.post("/v1/video/generate")
-@app.post("/inference")
+@geneface_app.post("/v1/video/generate")
+@geneface_app.post("/inference")
 async def receive_data(request: VideoGenerateRequest):
     audio_name = request.audio_name
     project_type = request.project_type
@@ -130,8 +146,8 @@ async def receive_data(request: VideoGenerateRequest):
     return JSONResponse(status_code=200, content=result.model_dump())
 
 
-@app.post("/v1/video/retrieve")
-@app.post("/get_video")
+@geneface_app.post("/v1/video/retrieve")
+@geneface_app.post("/get_video")
 async def return_files_list(request: VideoRetrieveRequest):
     global SNO_START
     data_json = request.model_dump()
@@ -163,7 +179,7 @@ async def return_files_list(request: VideoRetrieveRequest):
     return result
 
 
-@app.post('v1//live/inference')
+@geneface_app.post('v1//live/inference')
 async def live_info(request: LiveInferenceRequest):
     inference_data = request.model_dump()
     source_video = request.person_id
@@ -180,4 +196,4 @@ async def live_info(request: LiveInferenceRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8041)
+    uvicorn.run(geneface_app, host="0.0.0.0", port=8041)

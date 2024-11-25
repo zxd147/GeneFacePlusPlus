@@ -13,10 +13,6 @@ from websockets import exceptions
 from config.uitls import read_json_file
 from inference.genefacepp_infer import GeneFace2Infer
 
-'''
-2024.5.22 新增线上推流服务
-2024.6.6 需要新增队列维护内容
-'''
 
 # 创建日志记录器
 logger = logging.getLogger(__name__)
