@@ -1,7 +1,7 @@
 #!/bin/bash
 # usage: CUDA_VISIBLE_DEVICES=0 bash inference.sh <VIDEO_ID>
 
-# 获取命令行参数人物ID为 VIDEO_ID 推理模型为MODEL_TYPE
+# 获取命令行参数人物ID为 VIDEO_ID 推理模型为MODEL_TYPE, , 可选head/torso
 VIDEO_ID=$1
 MODEL_TYPE=$2
 
