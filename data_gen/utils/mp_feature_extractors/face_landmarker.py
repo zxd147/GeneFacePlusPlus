@@ -44,6 +44,14 @@ def read_video_to_frames(video_name):
     frames = np.flip(frames, -1) # BGR ==> RGB
     return frames
 
+
+def combine_vid_img_lm478_to_lm478(img_lm478, vid_lm478):
+    combined_lm478 = copy.deepcopy(vid_lm478)
+    combined_lm478[:, index_mouth_from_lm478] = img_lm478[:, index_mouth_from_lm478]
+    combined_lm478[:, index_eye_from_lm478] = img_lm478[:, index_eye_from_lm478]
+    return combined_lm478
+
+
 class MediapipeLandmarker:
     def __init__(self):
         model_path = 'data_gen/utils/mp_feature_extractors/face_landmarker.task'
@@ -121,12 +129,7 @@ class MediapipeLandmarker:
         combined_lm68[:, index_brow_from_lm68] = vid_lm68[:, index_brow_from_lm68]
         combined_lm68[:, index_nose_from_lm68] = vid_lm68[:, index_nose_from_lm68]
         return combined_lm68
-     
-    def combine_vid_img_lm478_to_lm478(self, img_lm478, vid_lm478):
-        combined_lm478 = copy.deepcopy(vid_lm478)
-        combined_lm478[:, index_mouth_from_lm478] = img_lm478[:, index_mouth_from_lm478]
-        combined_lm478[:, index_eye_from_lm478] = img_lm478[:, index_eye_from_lm478]
-        return combined_lm478
+
 
 if __name__ == '__main__':
     landmarker = MediapipeLandmarker()

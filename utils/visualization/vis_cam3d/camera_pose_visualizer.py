@@ -3,6 +3,9 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import matplotlib
+matplotlib.use('Agg')
+
 
 class CameraPoseVisualizer:
     def __init__(self, xlim=[-1, 1], ylim=[-1, 1], zlim=[-10, 0], view_mode='none'):
@@ -11,14 +14,14 @@ class CameraPoseVisualizer:
         self.zlim = zlim
         self.view_mode = view_mode
         self.fig = plt.figure(figsize=(5.12, 5.12))
-        self.ax = self.fig.add_subplot(projection = '3d')
+        self.ax = self.fig.add_subplot(projection='3d')
 
         # https://matplotlib.org/3.6.0/api/toolkits/mplot3d/view_angles.html#toolkit-mplot3d-view-angles
         # self.ax.view_init(elev=30, azim=45, roll=15)
         if view_mode == 'xz':
-            self.ax.view_init(elev=0, azim=-90, roll=0) # XZ
+            self.ax.view_init(elev=0, azim=-90, roll=0)  # XZ
         elif view_mode == 'xy':
-            self.ax.view_init(elev=90, azim=-90, roll=0) # XY
+            self.ax.view_init(elev=90, azim=-90, roll=0)  # XY
 
         self.ax.set_aspect("auto")
         self.ax.set_xlim(xlim)
@@ -36,14 +39,16 @@ class CameraPoseVisualizer:
                                [focal_len_scaled * aspect_ratio, -focal_len_scaled * aspect_ratio, focal_len_scaled, 1],
                                [focal_len_scaled * aspect_ratio, focal_len_scaled * aspect_ratio, focal_len_scaled, 1],
                                [-focal_len_scaled * aspect_ratio, focal_len_scaled * aspect_ratio, focal_len_scaled, 1],
-                               [-focal_len_scaled * aspect_ratio, -focal_len_scaled * aspect_ratio, focal_len_scaled, 1]])
+                               [-focal_len_scaled * aspect_ratio, -focal_len_scaled * aspect_ratio, focal_len_scaled,
+                                1]])
         vertex_transformed = vertex_std @ extrinsic.T
         meshes = [
-                            [vertex_transformed[0, :-1], vertex_transformed[1][:-1], vertex_transformed[2, :-1]],
-                            [vertex_transformed[0, :-1], vertex_transformed[2, :-1], vertex_transformed[3, :-1]],
-                            [vertex_transformed[0, :-1], vertex_transformed[3, :-1], vertex_transformed[4, :-1]],
-                            [vertex_transformed[0, :-1], vertex_transformed[4, :-1], vertex_transformed[1, :-1]],
-                            [vertex_transformed[1, :-1], vertex_transformed[2, :-1], vertex_transformed[3, :-1], vertex_transformed[4, :-1]]
+            [vertex_transformed[0, :-1], vertex_transformed[1][:-1], vertex_transformed[2, :-1]],
+            [vertex_transformed[0, :-1], vertex_transformed[2, :-1], vertex_transformed[3, :-1]],
+            [vertex_transformed[0, :-1], vertex_transformed[3, :-1], vertex_transformed[4, :-1]],
+            [vertex_transformed[0, :-1], vertex_transformed[4, :-1], vertex_transformed[1, :-1]],
+            [vertex_transformed[1, :-1], vertex_transformed[2, :-1], vertex_transformed[3, :-1],
+             vertex_transformed[4, :-1]]
         ]
         self.ax.add_collection3d(
             # Poly3DCollection(meshes, facecolors=color, linewidths=0.05, edgecolors=color, alpha=0.35))
@@ -55,7 +60,7 @@ class CameraPoseVisualizer:
         image_array = np.frombuffer(canvas.tostring_rgb(), dtype='uint8')
         image_array = image_array.reshape(height, width, 3)
         return image_array
-    
+
     def customize_legend(self, list_label):
         list_handle = []
         for idx, label in enumerate(list_label):
@@ -72,6 +77,6 @@ class CameraPoseVisualizer:
     def show(self):
         plt.title('Extrinsic Parameters')
         plt.show()
-    
+
     def reset(self, xlim=[-50, 50], ylim=[-50, 50], zlim=[0, 50], view_mode='none'):
         self.__init__(xlim, ylim, zlim, view_mode)

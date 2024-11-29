@@ -10,7 +10,7 @@ gWsk_remote = None
 # 处理 WebSocket 连接的函数
 async def websocket_handler(websocket, path):
     global gWsk_self, gWsk_remote
-    print(f"New connection from {websocket.remote_address} path {path}")
+    print(f"New connection from {websocket.remote_address} path {path}")  # 路由
 
     if "192.168.0.246" in websocket.remote_address[0]:
         gWsk_self = websocket
@@ -41,7 +41,8 @@ async def websocket_handler(websocket, path):
 # 启动 WebSocket 服务端
 async def main():
     server = await websockets.serve(websocket_handler, "0.0.0.0", 5465)
-    print("WebSocket server started. Listening on ws://0.0.0.0:5465")
+    #  await 启动 WebSocket 服务器并使其开始监听指定的地址和端口。在服务器开始监听之后立即返回控制权给事件循环。
+    print("\nWebSocket server started. Listening on ws://0.0.0.0:5465")
     await server.wait_closed()  # 保持服务器运行，直到关闭
 
 

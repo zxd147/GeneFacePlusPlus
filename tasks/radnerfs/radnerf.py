@@ -6,6 +6,8 @@ import os
 import cv2
 import lpips
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
 
 from modules.radnerfs.radnerf import RADNeRF
 from modules.radnerfs.utils import convert_poses, get_bg_coords, get_rays

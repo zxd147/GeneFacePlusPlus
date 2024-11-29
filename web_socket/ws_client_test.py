@@ -4,8 +4,6 @@ import websockets
 
 async def websocket_client():
     uri = "ws://192.168.0.246:5465"  # WebSocket 服务端的地址和端口
-    #    uri = "ws://127.0.0.1:5465"  # WebSocket 服务端的地址和端口
-
     async with websockets.connect(uri) as websocket:
         # 连接成功后发送消息
         await websocket.send("Hello, WebSocket server! 你好！")

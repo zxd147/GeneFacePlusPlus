@@ -5,14 +5,15 @@ import logging
 import os
 import queue
 import time
+from typing import Optional, Any
 
+import simplejson
 import websockets
 from minio import Minio
 from websockets import exceptions
 
 from config.uitls import read_json_file
 from inference.genefacepp_infer import GeneFace2Infer
-
 
 # 创建日志记录器
 logger = logging.getLogger(__name__)
@@ -59,18 +60,16 @@ async def websocket_handler(websocket, path):
         # 循环监听 WebSocket 客户端发送的消息
         async for message in websocket:
             print(f"Received message: {message}")
-            '''
             try:
                 cur_json = json.loads(message)
                 sId = cur_json["id_path"]
                 print(f"sId={sId}")
+                await inference(message)
             except Exception as e:
                 print(f"读取json信息【错误】{e}")
                 # return
-
             # 原样返回收到的消息
             await websocket.send(message)
-            '''
 
     except websockets.exceptions.ConnectionClosedError:
         print(f"Connection to {websocket.remote_address} closed")
@@ -80,6 +79,8 @@ async def websocket_handler(websocket, path):
 
 # 处理客户端连接
 async def handle_client(reader, writer):
+    # reader: 是一个 StreamReader 对象，用于读取客户端发送的数据。
+    # writer: 是一个 StreamWriter 对象，用于向客户端发送数据。
     data = await reader.read(2048)  # 1024
     message = data.decode("utf-8")
     print(f'Received: {message}')
@@ -92,6 +93,7 @@ async def handle_client(reader, writer):
 
 # socket服务端
 async def start_server():
+    # 异步 TCP 服务器。
     server = await asyncio.start_server(handle_client, socket_ip, int(socket_port))
     async with server:
         await server.serve_forever()
@@ -101,22 +103,14 @@ async def start_server():
 async def process_messages():
     while True:
         try:
-            if not message_queue.empty():
-                message = message_queue.get()
-                # if message is not None:
-                #     await inference(message)
-                # else:
-                #     print('从队列中取出的消息为 None,跳过处理')
-                #     pass
-
-                if not message:
-                    await asyncio.sleep(1)  # 暂停 1 秒钟
-                else:
-                    await inference(message)
-
+            message = message_queue.get_nowait()
+            print(f"Processing message: {message}")
+            if not message:
+                await asyncio.sleep(1)  # 暂停 1 秒钟
             else:
-                # print('当前队列为空，稍等')
-                pass
+                await inference(message)
+        except queue.Empty:
+            pass  # 队列为空时的处理
         except Exception as e:
             print("Error 出现的错误", e)
         await asyncio.sleep(0.5)  # 暂停 1 秒钟
@@ -190,10 +184,21 @@ def parameter():
     return args, inp
 
 
-args, inp = parameter()
-obj = GeneFace2Infer(audio2secc_dir=args.a2m_ckpt, postnet_dir=args.postnet_ckpt, head_model_dir=args.head_ckpt,
-                     torso_model_dir=args.torso_ckpt)
+def init():
+    global args, inp, model  # 声明这些变量是全局变量
+    args, inp = parameter()
+    # 实例化
+    model = GeneFace2Infer(audio2secc_dir=args.a2m_ckpt, postnet_dir=args.postnet_ckpt,
+                           head_model_dir=args.head_ckpt, torso_model_dir=args.torso_ckpt)
+
+
+"""=====================入口======================"""
+
 IDX = 0
+args: Optional[Any] = None
+inp: Optional[Any] = None
+model: Optional[GeneFace2Infer] = None
+init()  # 调用初始化函数
 
 
 # def inference(line):
@@ -201,12 +206,15 @@ async def inference(line):
     global IDX, isBusy
     logger.info(f'{time.time()} 当前推理信息 {line} 序号 {IDX}')
     isBusy = True
-    cur_info = line.replace("'", "\"")
     try:
-        cur_json = json.loads(cur_info)
+        cur_json = json.loads(line)
     except json.JSONDecodeError as e:
-        print(f"【时间】{time.ctime()}  读取json信息【错误】{e}")
-        return
+        try:
+            print(f"解析json失败，尝试使用simplejson: \n{line}, \n{e}")
+            cur_json = simplejson.loads(line)
+        except json.JSONDecodeError as e:
+            print(f"【时间】{time.ctime()}  读取json信息【错误】{e}")
+            return
 
     inp['drv_aud'] = os.path.join(base_audio_path, cur_json['audio'])
     video_output = str(int(time.time())) + ".mp4"
@@ -219,8 +227,8 @@ async def inference(line):
     inp['out_name'] = os.path.join(id_path, video_output)
 
     try:
-        # obj.infer_once_v2(inp,project_type) # 推理
-        obj.infer_once(inp)  # 推理
+        # model.infer_once_v2(inp,project_type) # 推理
+        model.infer_once(inp)  # 推理
 
         if project_type == 1:
             # 进行文件的上传

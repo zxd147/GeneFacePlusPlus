@@ -22,10 +22,12 @@ class Superresolution(torch.nn.Module):
         # w_dim is not necessary, will be mul by 0
         self.w_dim = 16
         self.block0 = SynthesisBlockNoUp(channels, 128, w_dim=self.w_dim, resolution=256,
-                img_channels=3, is_last=False, use_fp16=use_fp16, conv_clamp=(256 if use_fp16 else None), **block_kwargs)
+                                         img_channels=3, is_last=False, use_fp16=use_fp16,
+                                         conv_clamp=(256 if use_fp16 else None), **block_kwargs)
         self.block1 = SynthesisBlock(128, 64, w_dim=self.w_dim, resolution=512,
-                img_channels=3, is_last=True, use_fp16=use_fp16, conv_clamp=(256 if use_fp16 else None), **block_kwargs)
-        self.register_buffer('resample_filter', upfirdn2d.setup_filter([1,3,3,1]))
+                                     img_channels=3, is_last=True, use_fp16=use_fp16,
+                                     conv_clamp=(256 if use_fp16 else None), **block_kwargs)
+        self.register_buffer('resample_filter', upfirdn2d.setup_filter([1, 3, 3, 1]))
 
     def forward(self, rgb, **block_kwargs):
         x = rgb
@@ -34,13 +36,14 @@ class Superresolution(torch.nn.Module):
 
         if x.shape[-1] < self.input_resolution:
             x = torch.nn.functional.interpolate(x, size=(self.input_resolution, self.input_resolution),
-                                                  mode='bilinear', align_corners=False, antialias=self.sr_antialias)
+                                                mode='bilinear', align_corners=False, antialias=self.sr_antialias)
             rgb = torch.nn.functional.interpolate(rgb, size=(self.input_resolution, self.input_resolution),
                                                   mode='bilinear', align_corners=False, antialias=self.sr_antialias)
 
         x, rgb = self.block0(x, rgb, ws, **block_kwargs)
         x, rgb = self.block1(x, rgb, ws, **block_kwargs)
         return rgb
+
 
 class RADNeRFwithSR(NeRFRenderer):
     def __init__(self, hparams):
@@ -53,61 +56,76 @@ class RADNeRFwithSR(NeRFRenderer):
         elif hparams['cond_type'] == 'idexp_lm3d_normalized':
             keypoint_mode = hparams.get("nerf_keypoint_mode", "lm68")
             if keypoint_mode == 'lm68':
-                self.cond_in_dim = 68*3
+                self.cond_in_dim = 68 * 3
             elif keypoint_mode == 'lm131':
-                self.cond_in_dim = 131*3
+                self.cond_in_dim = 131 * 3
             elif keypoint_mode == 'lm468':
-                self.cond_in_dim = 468*3
+                self.cond_in_dim = 468 * 3
             else:
-                raise NotImplementedError()      
+                raise NotImplementedError()
         else:
-            raise NotImplementedError()      
-              
-        # a prenet that processes the raw condition
+            raise NotImplementedError()
+
+            # a prenet that processes the raw condition
         self.cond_out_dim = hparams['cond_out_dim'] // 2 * 2
         self.cond_win_size = hparams['cond_win_size']
         self.smo_win_size = hparams['smo_win_size']
 
         self.cond_prenet = AudioNet(self.cond_in_dim, self.cond_out_dim, win_size=self.cond_win_size)
         if hparams.get("add_eye_blink_cond", False):
-            self.blink_embedding = nn.Embedding(1,  self.cond_out_dim//2)
+            self.blink_embedding = nn.Embedding(1, self.cond_out_dim // 2)
             self.blink_encoder = nn.Sequential(
                 *[
-                    nn.Linear(self.cond_out_dim//2, self.cond_out_dim//2),
-                    nn.Linear(self.cond_out_dim//2, hparams['eye_blink_dim']),
+                    nn.Linear(self.cond_out_dim // 2, self.cond_out_dim // 2),
+                    nn.Linear(self.cond_out_dim // 2, hparams['eye_blink_dim']),
                 ]
             )
         # a attention net that smoothes the condition feat sequence
         self.with_att = hparams['with_att']
         if self.with_att:
             self.cond_att_net = AudioAttNet(self.cond_out_dim, seq_len=self.smo_win_size)
-    
+
         # a ambient network that predict the 2D ambient coordinate
         # the ambient grid models the dynamic of canonical face
         # by predict ambient coords given cond_feat, we can be driven the face by either audio or landmark!
-        self.grid_type = hparams['grid_type'] # tiledgrid or hashgrid
-        self.grid_interpolation_type = hparams['grid_interpolation_type'] # smoothstep or linear
-        self.position_embedder, self.position_embedding_dim = get_encoder(self.grid_type, input_dim=3, num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=hparams['log2_hashmap_size'], desired_resolution=hparams['desired_resolution'] * self.bound, interpolation=self.grid_interpolation_type)
+        self.grid_type = hparams['grid_type']  # tiledgrid or hashgrid
+        self.grid_interpolation_type = hparams['grid_interpolation_type']  # smoothstep or linear
+        self.position_embedder, self.position_embedding_dim = get_encoder(self.grid_type, input_dim=3, num_levels=16,
+                                                                          level_dim=2, base_resolution=16,
+                                                                          log2_hashmap_size=hparams[
+                                                                              'log2_hashmap_size'],
+                                                                          desired_resolution=hparams[
+                                                                                                 'desired_resolution'] * self.bound,
+                                                                          interpolation=self.grid_interpolation_type)
         self.num_layers_ambient = hparams['num_layers_ambient']
         self.hidden_dim_ambient = hparams['hidden_dim_ambient']
         self.ambient_coord_dim = hparams['ambient_coord_dim']
 
-        self.ambient_net = MLP(self.position_embedding_dim + self.cond_out_dim, self.ambient_coord_dim, self.hidden_dim_ambient, self.num_layers_ambient)
+        self.ambient_net = MLP(self.position_embedding_dim + self.cond_out_dim, self.ambient_coord_dim,
+                               self.hidden_dim_ambient, self.num_layers_ambient)
         # the learnable ambient grid
-        self.ambient_embedder, self.ambient_embedding_dim = get_encoder(self.grid_type, input_dim=hparams['ambient_coord_dim'], num_levels=16, level_dim=2, base_resolution=16, log2_hashmap_size=hparams['log2_hashmap_size'], desired_resolution=hparams['desired_resolution'], interpolation=self.grid_interpolation_type)
+        self.ambient_embedder, self.ambient_embedding_dim = get_encoder(self.grid_type,
+                                                                        input_dim=hparams['ambient_coord_dim'],
+                                                                        num_levels=16, level_dim=2, base_resolution=16,
+                                                                        log2_hashmap_size=hparams['log2_hashmap_size'],
+                                                                        desired_resolution=hparams[
+                                                                            'desired_resolution'],
+                                                                        interpolation=self.grid_interpolation_type)
 
         # sigma network
         self.num_layers_sigma = hparams['num_layers_sigma']
         self.hidden_dim_sigma = hparams['hidden_dim_sigma']
         self.geo_feat_dim = hparams['geo_feat_dim']
 
-        self.sigma_net = MLP(self.position_embedding_dim + self.ambient_embedding_dim, 1 + self.geo_feat_dim, self.hidden_dim_sigma, self.num_layers_sigma)
+        self.sigma_net = MLP(self.position_embedding_dim + self.ambient_embedding_dim, 1 + self.geo_feat_dim,
+                             self.hidden_dim_sigma, self.num_layers_sigma)
 
         # color network
-        self.num_layers_color = hparams['num_layers_color']    
+        self.num_layers_color = hparams['num_layers_color']
         self.hidden_dim_color = hparams['hidden_dim_color']
         self.direction_embedder, self.direction_embedding_dim = get_encoder('spherical_harmonics')
-        self.color_net = MLP(self.direction_embedding_dim + self.geo_feat_dim + self.individual_embedding_dim, 3, self.hidden_dim_color, self.num_layers_color)
+        self.color_net = MLP(self.direction_embedding_dim + self.geo_feat_dim + self.individual_embedding_dim, 3,
+                             self.hidden_dim_color, self.num_layers_color)
         self.dropout = nn.Dropout(p=hparams['cond_dropout_rate'], inplace=False)
 
         self.sr_net = Superresolution(channels=3)
@@ -131,13 +149,14 @@ class RADNeRFwithSR(NeRFRenderer):
         cond_feat = self.cond_prenet(cond)
         if hparams.get("add_eye_blink_cond", False):
             if eye_area_percent is None:
-                eye_area_percent = torch.zeros([1,1], dtype=cond_feat.dtype)
+                eye_area_percent = torch.zeros([1, 1], dtype=cond_feat.dtype)
             blink_feat = self.blink_embedding(torch.tensor(0, device=cond_feat.device)).reshape([1, -1])
-            blink_feat = blink_feat * eye_area_percent.reshape([1,1]).to(cond_feat.device)
+            blink_feat = blink_feat * eye_area_percent.reshape([1, 1]).to(cond_feat.device)
             blink_feat = self.blink_encoder(blink_feat)
-            cond_feat[..., :hparams['eye_blink_dim']] = cond_feat[..., :hparams['eye_blink_dim']] + blink_feat.expand(cond_feat[..., :hparams['eye_blink_dim']].shape)
+            cond_feat[..., :hparams['eye_blink_dim']] = cond_feat[..., :hparams['eye_blink_dim']] + blink_feat.expand(
+                cond_feat[..., :hparams['eye_blink_dim']].shape)
         if self.with_att:
-            cond_feat = self.cond_att_net(cond_feat) # [1, 64] 
+            cond_feat = self.cond_att_net(cond_feat)  # [1, 64]
         return cond_feat
 
     def forward(self, position, direction, cond_feat, individual_code, cond_mask=None):
@@ -147,15 +166,18 @@ class RADNeRFwithSR(NeRFRenderer):
         cond_feat: [1, cond_dim], condition encoding, generated by self.cal_cond_feat
         individual_code: [1, ind_dim], individual code for each timestep
         """
-        cond_feat = cond_feat.repeat([position.shape[0], 1]) # [1,cond_dim] ==> [N, cond_dim]
+        cond_feat = cond_feat.repeat([position.shape[0], 1])  # [1,cond_dim] ==> [N, cond_dim]
 
-        pos_feat = self.position_embedder(position, bound=self.bound) # spatial feat f after E^3_{spatial} 3D grid in the paper
+        pos_feat = self.position_embedder(position,
+                                          bound=self.bound)  # spatial feat f after E^3_{spatial} 3D grid in the paper
 
         # ambient
-        ambient_inp = torch.cat([pos_feat, cond_feat], dim=1) # audio feat and spatial feat 
-        ambient_logit = self.ambient_net(ambient_inp).float() # the MLP after AFE in paper, use float(), prevent performance drop due to amp
-        ambient_pos = torch.tanh(ambient_logit) # normalized to [-1, 1], act as the coordinate in the 2D ambient tilegrid
-        ambient_feat = self.ambient_embedder(ambient_pos, bound=1) # E^2_{audio} in paper, 2D grid
+        ambient_inp = torch.cat([pos_feat, cond_feat], dim=1)  # audio feat and spatial feat
+        ambient_logit = self.ambient_net(
+            ambient_inp).float()  # the MLP after AFE in paper, use float(), prevent performance drop due to amp
+        ambient_pos = torch.tanh(
+            ambient_logit)  # normalized to [-1, 1], act as the coordinate in the 2D ambient tilegrid
+        ambient_feat = self.ambient_embedder(ambient_pos, bound=1)  # E^2_{audio} in paper, 2D grid
 
         # sigma
         h = torch.cat([pos_feat, ambient_feat], dim=-1)
@@ -180,14 +202,17 @@ class RADNeRFwithSR(NeRFRenderer):
         Calculate Density, this is a sub-process of self.forward 
         """
         assert self.hparams.get("to_heatmap", False) is False
-        cond_feat = cond_feat.repeat([position.shape[0], 1]) # [1,cond_dim] ==> [N, cond_dim]
-        pos_feat = self.position_embedder(position, bound=self.bound) # spatial feat f after E^3_{spatial} 3D grid in the paper
+        cond_feat = cond_feat.repeat([position.shape[0], 1])  # [1,cond_dim] ==> [N, cond_dim]
+        pos_feat = self.position_embedder(position,
+                                          bound=self.bound)  # spatial feat f after E^3_{spatial} 3D grid in the paper
 
         # ambient
-        ambient_inp = torch.cat([pos_feat, cond_feat], dim=1) # audio feat and spatial feat 
-        ambient_logit = self.ambient_net(ambient_inp).float() # the MLP after AFE in paper, use float(), prevent performance drop due to amp
-        ambient_pos = torch.tanh(ambient_logit) # normalized to [-1, 1], act as the coordinate in the 2D ambient tilegrid
-        ambient_feat = self.ambient_embedder(ambient_pos, bound=1) # E^2_{audio} in paper, 2D grid
+        ambient_inp = torch.cat([pos_feat, cond_feat], dim=1)  # audio feat and spatial feat
+        ambient_logit = self.ambient_net(
+            ambient_inp).float()  # the MLP after AFE in paper, use float(), prevent performance drop due to amp
+        ambient_pos = torch.tanh(
+            ambient_logit)  # normalized to [-1, 1], act as the coordinate in the 2D ambient tilegrid
+        ambient_feat = self.ambient_embedder(ambient_pos, bound=1)  # E^2_{audio} in paper, 2D grid
 
         # sigma
         h = torch.cat([pos_feat, ambient_feat], dim=-1)
@@ -199,12 +224,15 @@ class RADNeRFwithSR(NeRFRenderer):
             'sigma': sigma,
             'geo_feat': geo_feat,
         }
-    
-    def render(self, rays_o, rays_d, cond, bg_coords, poses, index=0, dt_gamma=0, bg_color=None, perturb=False, force_all_rays=False, max_steps=1024, T_thresh=1e-4, cond_mask=None, eye_area_percent=None, **kwargs):
-        results = super().render(rays_o, rays_d, cond, bg_coords, poses, index, dt_gamma, bg_color, perturb, force_all_rays, max_steps, T_thresh, cond_mask, eye_area_percent=eye_area_percent, **kwargs)
-        rgb_image = results['rgb_map'].reshape([1, 256, 256, 3]).permute(0,3,1,2)
+
+    def render(self, rays_o, rays_d, cond, bg_coords, poses, index=0, dt_gamma=0, bg_color=None, perturb=False,
+               force_all_rays=False, max_steps=1024, T_thresh=1e-4, cond_mask=None, eye_area_percent=None, **kwargs):
+        results = super().render(rays_o, rays_d, cond, bg_coords, poses, index, dt_gamma, bg_color, perturb,
+                                 force_all_rays, max_steps, T_thresh, cond_mask, eye_area_percent=eye_area_percent,
+                                 **kwargs)
+        rgb_image = results['rgb_map'].reshape([1, 256, 256, 3]).permute(0, 3, 1, 2)
         sr_rgb_image = self.sr_net(rgb_image.clone())
-        sr_rgb_image = sr_rgb_image.clamp(0,1)
+        sr_rgb_image = sr_rgb_image.clamp(0, 1)
         results['rgb_map'] = rgb_image
         results['sr_rgb_map'] = sr_rgb_image
         return results

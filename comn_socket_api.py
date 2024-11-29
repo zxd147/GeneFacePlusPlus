@@ -101,6 +101,7 @@ stream_url = data['rtsp_url']
 
 def send_data_to_modeler(inference_info):
     # 创建一个新的套接字对象, AF_INET 表示使用 IPv4 地址, SOCK_STREAM 表示这是一个流式套接字（TCP）
+    # 基于 TCP 协议的网络服务, TCP 客户端。
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.settimeout(2)  # 设置2s超时时间
     cur_id = inference_info['session_id']
@@ -135,6 +136,7 @@ async def receive_data(request: VideoGenerateRequest):
         print(f"remote = {remote_dict[session_id]}"
               if remote_dict[session_id] == request.client.host else "remote 已保存！")
     wav_path = os.path.join(base_audio_path, audio_name)
+
     if os.path.exists(wav_path):
         status = 0
         ip_mapping.setdefault(session_id, len(ip_mapping) + 1)

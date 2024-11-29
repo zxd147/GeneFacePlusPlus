@@ -7,7 +7,7 @@
     "20240710":"测试全身效果",
     "torso_ckpt_old":"checkpoints/checkpoints/motion2video_nerf/0202_xxz_v0_torso",
     
-    "torso_ckpt_old_huang":"checkpoints/checkpoints/motion2video_nerf/0401_huang_v1_torso",
+    "torso_ckpt_old_huang":"checkpoints/checkpoints/motion2video_nerf/huang_torso",
     "torso_ckpt":"checkpoints/motion2video_nerf/huang_torso",
     "head_ckpt":"",
     "drv_aud":"data/raw/val_wavs/c.wav",
