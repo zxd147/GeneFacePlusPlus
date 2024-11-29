@@ -8,19 +8,21 @@ import argparse
 import numpy as np
 
 
-def crop(input_video):
-    width, height = get_video_resolution(input_video)
-    print(f"Original Width: {width}, Original Height: {height}")
-    aspect_ratio = width / height
-    resize_width = 720
-    resize_height = int(resize_width / aspect_ratio)
+def crop(input_video, to_crop_size=720):
     target_size = 512
     target_fps = 25
+    width, height = get_video_resolution(input_video)
+    print(f"Original Width: {width}, Original Height: {height}")
+    aspect_ratio = height / width
+    crop_ratio = target_size / to_crop_size
+    resize_width = (width * crop_ratio + 1) // 2 * 2
+    resize_height = (int(resize_width * aspect_ratio) + 1) // 2 * 2
+
+    # 使用 os.path.dirname 获取视频文件所在的目录路径
+    base_dir = os.path.dirname(input_video)
 
     # 使用 os.path.basename 获取视频文件名（不包含扩展名）
     name = os.path.basename(input_video).split('.')[0].replace('_ori', '')
-    # 使用 os.path.dirname 获取视频文件所在的目录路径
-    base_dir = os.path.dirname(input_video)
     # 转分辨率后的视频路径
     resized_path = os.path.join(base_dir, f'{name}_resized.mp4')
     # 第一帧保存路径
@@ -39,18 +41,30 @@ def crop(input_video):
     resize_video(input_video, resized_path, target_fps, resize_width, resize_height)
     video_capture = cv2.VideoCapture(resized_path)
 
-    diy_number = 1
-    while video_capture.isOpened():
-        ret, frame = video_capture.read()
-        print(f"第{diy_number}帧的大小", frame.shape)
-        face_coords = get_face_coordinates(face_detector, frame, first_frame_face_path)
-        if face_coords is not None:
-            center_x, center_y = face_coords
-            print(f"Center coordinates of the {diy_number} frame detected face:", center_x, center_y)
-        else:
-            print("No face detected in the first frame, will exit.")
-            exit(1)
-        diy_number += 1
+    diy_number = 1  # 起始帧号
+    target_frame = 10  # 假设我们需要提取第 10 帧的人脸（可以根据需要修改）
+
+    # while video_capture.isOpened():
+    #     ret, frame = video_capture.read()
+    #     # 如果帧读取失败，则退出
+    #     if not ret:
+    #         print("Failed to grab frame. Exiting...")
+    #         break
+    #
+    #     # 如果当前帧是目标帧
+    #     if diy_number == target_frame:
+    #         print(f"Processing frame {diy_number}, size: {frame.shape}")
+    #         # 检测当前帧的人脸
+    #         face_coords = get_face_coordinates(face_detector, frame, first_frame_face_path)
+    #         if face_coords is not None:
+    #             center_x, center_y = face_coords
+    #             print(f"Center coordinates of the frame {diy_number} detected face:", center_x, center_y)
+    #         else:
+    #             print(f"No face detected in the {diy_number} frame, will exit.")
+    #             exit(1)
+    #     # 增加帧号，处理下一帧
+    #     diy_number += 1
+
     # 获取第一帧的人脸坐标
     ret, first_frame = video_capture.read()
     if not ret:
@@ -104,6 +118,8 @@ def resize_video(input_video, resized_path, target_fps, resize_width, resize_hei
         print(f"Conversion successful. Output file saved to {resized_path}")
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while converting the video: {e}")
+    finally:
+        print(f"缩放后的分辨率为: {resize_width}x{resize_height}")
 
 
 def extract_audio(resized_path, audio_path):
@@ -229,9 +245,10 @@ def crop_compose_video(resized_path, final_path, target_size, center_x, center_y
 
 if __name__ == "__main__":
     args = parser = argparse.ArgumentParser()
-    default_video = '/home/zxd/code/Vision/GeneFacePlusPlus/temp/li_logo_trimmed_1440x2560.mp4'
+    default_video = '/home/zxd/code/Vision/GeneFacePlusPlus/data/raw/videos/yu/yu_ori.mp4'
     parser.add_argument('--input', type=str, default=default_video)
     opt = parser.parse_args()
     input_path = opt.input
-    crop(input_path)
+    crop_size = 600
+    crop(input_path, to_crop_size=crop_size)
 

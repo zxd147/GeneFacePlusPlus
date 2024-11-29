@@ -74,7 +74,7 @@ def extract_landmark_job(video_name, nerf=False):
         if face_landmarker is None:
             face_landmarker = MediapipeLandmarker()
         img_lm478, vid_lm478 = face_landmarker.extract_lm478_from_video_name(video_name)
-        lm478 = face_landmarker.combine_vid_img_lm478_to_lm478(img_lm478, vid_lm478)
+        lm478 = combine_vid_img_lm478_to_lm478(img_lm478, vid_lm478)
         np.save(out_name, lm478)
         return True
         # print("Hahaha, solve one item!!!")

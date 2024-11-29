@@ -1,5 +1,7 @@
 import argparse
+import json
 import os
+import subprocess
 
 import cv2
 import face_alignment
@@ -10,6 +12,49 @@ from tqdm import tqdm
 
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
+def resize_video(input_video, target_fps, crop_size, target_size=512):
+    resized_path = input_video.replace("_ori", "_resized")
+    width, height = get_video_resolution(input_video)
+    print(f"Original Width: {width}, Original Height: {height}")
+    aspect_ratio = height / width
+    crop_ratio = target_size / crop_size
+    resize_width = width * crop_ratio // 2 * 2
+    resize_height = int(resize_width * aspect_ratio) // 2 * 2
+    # 定义 FFmpeg 命令
+    command = [
+        "ffmpeg",
+        "-i", input_video,
+        "-vf", f"fps={target_fps},scale=w={resize_width}:h={resize_height}",
+        "-qmin", "1",
+        "-q:v", "1",
+        "-y", resized_path
+    ]
+    # 运行命令
+    try:
+        print(f"Starting resized video to {resize_width}x{resize_height}...")
+        subprocess.run(command, check=True)
+        print(f"Conversion successful. Output file saved to {resized_path}")
+        return resized_path
+    except subprocess.CalledProcessError as e:
+        print(f"An error occurred while converting the video: {e}")
+
+
+def get_video_resolution(input_video):
+    # 使用 FFmpeg 获取视频信息
+    cmd = [
+        'ffprobe',
+        '-v', 'error',
+        '-select_streams', 'v:0',
+        '-show_entries', 'stream=width,height',
+        '-of', 'json'
+    ]
+    result = subprocess.run(cmd + [input_video], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    data = json.loads(result.stdout.decode())
+    width = data['streams'][0]['width']
+    height = data['streams'][0]['height']
+    return width, height
 
 
 def sort_key(filename):
@@ -28,8 +73,8 @@ def save_landmarks(landmarks, output_landmarks_path):
 
 def crop_video(input_video, output_video, frames_per_second=25, target_size=512):
     # def process_video_and_crop_frames(input_video, output_video, frames_per_second=25, target_size=512):
-    name = input_video.split('/')[-1].split('.')[0].replace('_ori', '')
     output_dir = os.path.dirname(input_video)
+    name = input_video.split('/')[-1].split('.')[0].replace('_ori', '').replace('_resized', '')
     landmarks_file = os.path.join(output_dir, f"{name}.npy")
     frame_folder = os.path.join(output_dir, f'{name}_frame')
     os.makedirs(frame_folder, exist_ok=True)
@@ -116,18 +161,25 @@ def crop_video(input_video, output_video, frames_per_second=25, target_size=512)
     video_with_audio.write_videofile(os.path.join(output_dir, f"{name}.mp4"), codec='libx264')
 
 
-def run(input_path, output_path):
+def run(input_video, output_video, is_resized=True):
     # Process video and crop frames
-    crop_video(input_path, output_path)
+    target_fps = 25
+    crop_size = 720
+    target_size = 512
+    if is_resized:
+        input_video = resize_video(input_video, target_fps, crop_size, target_size)
+    crop_video(input_video, output_video)
 
 
 if __name__ == '__main__':
+    in_default_path = '/home/zxd/code/Vision/GeneFacePlusPlus/data/raw/videos/yu/yu_ori.mp4'
+    out_default_path = '/home/zxd/code/Vision/GeneFacePlusPlus/output/yu/yu_out.mp4'
+    resized = True
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input_path', type=str,
-                        default='/home/zxd/code/Vision/GeneFacePlusPlus/data/raw/videos/li/li_720x1440_25fps_30s.mp4')  # 输入的视频路径
-    parser.add_argument('--output_path', type=str, default='/home/zxd/code/Vision/GeneFacePlusPlus/output/li_test/li_test_out.mp4')  # 输出的视频路径
+    parser.add_argument('--input_path', type=str, default=in_default_path)  # 输入的视频路径
+    parser.add_argument('--output_path', type=str, default=out_default_path)  # 输出的视频路径
     args = parser.parse_args()
-    run(args.input_path, args.output_path)
+    run(args.input_path, args.output_path, is_resized=resized)
     # data = np.load('/home/zxd/code/Vision/GeneFacePlusPlus/data/raw/.../save_landmarks.npy')
     # print(data.shape)
 

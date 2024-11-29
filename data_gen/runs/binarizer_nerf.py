@@ -4,7 +4,8 @@ import sys
 import numpy as np
 import math
 import json
-import imageio
+# import imageio
+import imageio.v2 as imageio
 import torch
 import tqdm
 import cv2

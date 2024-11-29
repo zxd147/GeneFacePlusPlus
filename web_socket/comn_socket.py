@@ -1,5 +1,6 @@
 import json
 import os
+import queue
 import socket
 import time
 
@@ -8,11 +9,6 @@ from flask_cors import CORS
 
 from config.uitls import read_json_file
 
-'''
-2024.5.22 新增线上推流服务
-2024.5.23 推流不可靠所以需要使用的是文件上传的形式
-2024.5.30 修改主要的推理接口，流程改版代码，返回的信息也会变化
-'''
 
 app = Flask(__name__)
 CORS(app)
@@ -27,6 +23,15 @@ base_audio_path = data['base_audio_path']
 socket_host = data['socket_ip_host']
 socket_port = data['socket_ip_port']
 stream_url = data['rtsp_url']
+isBusy = False
+gWsk_remote = None
+data_json = read_json_file('config/config.json')
+socket_ip = data_json['socket_ip_host']
+access_key = data_json['access_key']
+secret_key = data_json['secret_key']
+upload_server = data_json['api_server_name']
+message_queue = queue.Queue()
+inference_queue = queue.Queue()
 
 
 def send_data_to_modeler(inference_info):

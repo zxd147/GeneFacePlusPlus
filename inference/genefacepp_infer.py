@@ -2,6 +2,7 @@ import os
 import sys
 
 sys.path.append('./')
+import argparse
 
 import torch
 import torch.nn.functional as F
@@ -577,15 +578,13 @@ class GeneFace2Infer:
         print(f"Extracted wav file (16khz) from {audio_name} to {wav16k_name}.")
 
 
-if __name__ == '__main__':
-    import argparse, glob, tqdm
-
+def get_arg(head_ckpt=None, torso_ckpt=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--a2m_ckpt",
                         default='checkpoints/audio2motion_vae')  # checkpoints/0727_audio2secc/audio2secc_withlm2d100_randomframe
-    parser.add_argument("--head_ckpt", default='')
+    parser.add_argument("--head_ckpt", default=head_ckpt)
     parser.add_argument("--postnet_ckpt", default='')
-    parser.add_argument("--torso_ckpt", default='')
+    parser.add_argument("--torso_ckpt", default=torso_ckpt)
     parser.add_argument("--drv_aud", default='data/raw/val_wavs/MacronSpeech.wav')
     parser.add_argument("--drv_pose", default='nearest',
                         help="目前仅支持源视频的pose,包括从头开始和指定区间两种,暂时不支持in-the-wild的pose")
@@ -601,9 +600,7 @@ if __name__ == '__main__':
     parser.add_argument("--out_name", default='temp/tmp.mp4')
     parser.add_argument("--low_memory_usage", action='store_true',
                         help='write img to video upon generated, leads to slower fps, but use less memory')
-
     args = parser.parse_args()
-
     inp = {
         'a2m_ckpt': args.a2m_ckpt,
         'postnet_ckpt': args.postnet_ckpt,
@@ -622,4 +619,10 @@ if __name__ == '__main__':
     }
     if args.fast:
         inp['raymarching_end_threshold'] = 0.05
-    GeneFace2Infer.example_run(inp)
+    return inp
+
+
+if __name__ == '__main__':
+    infer_inp = get_arg()
+    GeneFace2Infer.example_run(infer_inp)
+

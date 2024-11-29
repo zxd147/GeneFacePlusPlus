@@ -1,7 +1,10 @@
 {
     "workpath":"",
     "workspace":"",
-
+    "model_path": {
+                    "li": "checkpoints/motion2video_nerf/li_torso",
+                    "huang": "checkpoints/motion2video_nerf/huang_torso"
+    },
     "20240223":"update",
     "a2m_ckpt":"checkpoints/audio2motion_vae",
     "20240710":"测试全身效果",

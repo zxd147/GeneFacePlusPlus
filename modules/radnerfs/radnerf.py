@@ -165,3 +165,4 @@ class RADNeRF(NeRFRenderer):
             'geo_feat': geo_feat,
         }
 
+

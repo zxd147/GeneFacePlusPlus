@@ -1,5 +1,6 @@
 import os
 import sys
+
 sys.path.append('./')
 sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 
@@ -16,10 +17,12 @@ def run_task():
     task_cls = getattr(importlib.import_module(pkg), cls_name)
     task_cls.start()
 
+
 def clear_gpus():
     devices = os.environ.get('CUDA_VISIBLE_DEVICES', '').split(",")
     for d in devices:
         os.system(f'pkill -f "voidgpu{d}"')
+
 
 if __name__ == '__main__':
     if os.environ.get('CUDA_VISIBLE_DEVICES', '') == '':
@@ -34,4 +37,3 @@ if __name__ == '__main__':
             shared_file_name = f'/home/tiger/nfs/pytorch_ddp_sharedfile/{exp_name}'
             if os.path.exists(shared_file_name):
                 os.system(f"rm -r {shared_file_name}")
-
