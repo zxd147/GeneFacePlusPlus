@@ -146,48 +146,61 @@ async def refresh_models(character):
 
 
 async def get_models(character, parallel, infer_device=None, storage_device=None, load_device=None):
-    global CURRENT_CHARACTER, load_model_instances, storage_model_instances, model, inp
+    global CURRENT_CHARACTER, load_model_instances, storage_model_instances, model
     # 选择推理设备，默认使用 cuda（如果可用），否则使用 cpu
     infer_device = infer_device or ('cuda' if torch.cuda.is_available() else 'cpu')
     # 根据并行推理决定存储设备，默认使用 infer_device，如果未提供 storage_device 则使用 'cpu'
     storage_device = infer_device if parallel else (storage_device or 'cpu')
     # 设置加载设备，如果未提供则默认使用 'cpu'
     load_device = load_device or 'cpu'
+    # 确保 character 是有效值
+    if character not in all_model_path:
+        raise ValueError(f"Character '{character}' not found in all_model_path keys.")
     if not model:
+        geneface_log.info("检测到未加载模型, 开始加载...")
         # 遍历 model_path_dict 中的所有模型路径
         for model_name, model_path in all_model_path.items():
             if model_name != character:
-                # 新加载的模型
-                inp = get_arg(torso_ckpt=model_path)
-                load_model_instances[model_path] = GeneFace2Infer(audio2secc_dir=inp["a2m_ckpt"],
-                                                                  postnet_dir=inp["postnet_ckpt"],
-                                                                  head_model_dir=inp["head_ckpt"],
-                                                                  torso_model_dir=inp["torso_ckpt"],
-                                                                  device=load_device)
+                geneface_log.info(f"正在加载{model_name}到{load_device}...")
+                load_or_update_model(model_path, load_device, load_model_instances)
             else:
-                inp = get_arg(torso_ckpt=model_path)
-                storage_model_instances[model_path] = GeneFace2Infer(audio2secc_dir=inp["a2m_ckpt"],
-                                                                     postnet_dir=inp["postnet_ckpt"],
-                                                                     head_model_dir=inp["head_ckpt"],
-                                                                     torso_model_dir=inp["torso_ckpt"],
-                                                                     device=infer_device)
-                set_model_to_device(storage_model_instances[model_path], infer_device)
-            CURRENT_CHARACTER = character
-        result = {"status": "loaded success"}
+                geneface_log.info(f"正在加载{model_name}到{infer_device}...")
+                load_or_update_model(model_path, infer_device, storage_model_instances)
+        result = {"status": "success", "message": "models loaded", "character": character, "device": infer_device}
+        geneface_log.debug(result)
+        CURRENT_CHARACTER = character
     elif not character == CURRENT_CHARACTER:
+        geneface_log.info(f"检测到模型发生变化，正在重新初始化{character}到设备{infer_device}...")
         # 遍历 model_path_dict 中的所有模型路径
-        for model_path, model_instance in storage_model_instances.items():
+        for model_instance in storage_model_instances.values():
             set_model_to_device(model_instance, storage_device)
-        model_path = all_model_path[character]
-        if model_path in load_model_instances:
-            storage_model_instances[model_path] = load_model_instances[model_path]
-            del load_model_instances[model_path]
-        model = storage_model_instances[model_path]
+        torch_gc()  # 垃圾回收
+        new_model_path = all_model_path[character]
+        if new_model_path in load_model_instances:
+            storage_model_instances[new_model_path] = load_model_instances.pop(new_model_path)
+        model = storage_model_instances[new_model_path]
         set_model_to_device(model, infer_device)
-        result = {"status": "change success"}
+        result = {"status": "success", "message": "change model", "character": character, "device": infer_device}
+        geneface_log.debug(result)
+        CURRENT_CHARACTER = character
     else:
-        result = {"status": "no change"}
+        result = {"status": "success", "message": "no changes", "character": character, "device": infer_device}
+        geneface_log.debug(result)
     return result
+
+
+def load_or_update_model(model_path, device, target_dict):
+    """加载或更新模型，移动到指定设备，并放入目标字典"""
+    global inp
+    inp = get_arg(torso_ckpt=model_path)
+    model_instance = GeneFace2Infer(
+        audio2secc_dir=inp["a2m_ckpt"],
+        postnet_dir=inp["postnet_ckpt"],
+        head_model_dir=inp["head_ckpt"],
+        torso_model_dir=inp["torso_ckpt"],
+        device=device
+    )
+    target_dict[model_path] = model_instance
 
 
 def set_model_to_device(model_instance, device_instance):
