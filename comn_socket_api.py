@@ -140,7 +140,7 @@ async def receive_data(request: VideoGenerateRequest):
     if os.path.exists(wav_path):
         status = 0
         ip_mapping.setdefault(session_id, len(ip_mapping) + 1)
-        info = {"session_id": session_id, 'audio': audio_name, "project_type": project_type}  # 构建ip信息库 ，并将信息传入到队列
+        info = {"session_id": session_id, 'audio': audio_name, "project_type": project_type}  # 构建会话信息库 ，并将信息传入到队列
         send_data_to_modeler(info)
     else:
         status = -1
