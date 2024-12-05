@@ -154,7 +154,7 @@ async def return_files_list(request: VideoRetrieveRequest):
     global SNO_START
     data_json = request.model_dump()
     if 'uid' not in data_json:
-        result = VideoRetrieveResponse(status=1, timestamp=int(time.time()), msg="no such uid")
+        result = VideoRetrieveResponse(status=1, timestamp=int(time.time()), msg="UID not provided")
         return result.model_dump()
 
     ask_id = request.uid
