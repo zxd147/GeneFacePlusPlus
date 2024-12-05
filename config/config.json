@@ -2,8 +2,9 @@
     "workpath":"",
     "workspace":"",
     "model_path": {
-                    "li": "checkpoints/motion2video_nerf/li_torso",
-                    "huang": "checkpoints/motion2video_nerf/huang_torso"
+        "huang": "checkpoints/motion2video_nerf/huang_torso",
+        "li": "checkpoints/motion2video_nerf/li_torso",
+        "yu": "checkpoints/motion2video_nerf/yu_torso"
     },
     "20240223":"update",
     "a2m_ckpt":"checkpoints/audio2motion_vae",
