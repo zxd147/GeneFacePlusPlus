@@ -1,44 +1,26 @@
+import asyncio
 import gc
 import json
 import os
-import socket
-import threading
 import time
-import argparse, glob, tqdm
 import uuid
-
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import List, Optional, Union, Literal
-import argparse
-import asyncio
-import json
-import logging
-import os
-import queue
-import time
+from typing import List, Union, Literal
 from typing import Optional, Any
 
-import simplejson
 import torch
-import websockets
-from minio import Minio
-from websockets import exceptions
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, HTMLResponse
+from pydantic import BaseModel, Field, model_validator, ValidationError
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
 
 from config.uitls import read_json_file
 from inference.genefacepp_infer import GeneFace2Infer, get_arg
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
-from pydantic import BaseModel, Field, root_validator, model_validator, ValidationError
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
 from utils.log_utils import logger
-from config.uitls import read_json_file
-import asyncio
-import threading
-import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 
 # 请求数据模型
@@ -136,7 +118,7 @@ def torch_gc():
 
 
 @asynccontextmanager
-async def lifespan(graphrag_app: FastAPI):
+async def lifespan(geneface_app: FastAPI):
     # 启动时执行
     try:
         geneface_log.info("启动中...")
@@ -196,7 +178,7 @@ async def get_models(character, is_parallel, infer_device=None, storage_device=N
                 if model_name != character
                 else (infer_device, storage_model_instances)
             )
-            geneface_log.info(f"正在加载{model_name}到{device}...")
+            geneface_log.info(f"正在加载推理模型{model_name}到{device}...")
             # 加载模型
             load_model(model_path, device, model_instances)
         model = storage_model_instances[all_model_path[character]]
@@ -204,16 +186,16 @@ async def get_models(character, is_parallel, infer_device=None, storage_device=N
         geneface_log.debug(result)
         CURRENT_CHARACTER = character
     elif not character == CURRENT_CHARACTER:
-        geneface_log.info(f"检测到模型发生变化，正在重新初始化{character}到设备{infer_device}...")
+        geneface_log.info(f"检测到模型发生变化，正在重新初始化推理模型{character}到设备{infer_device}...")
         # 遍历 model_path_dict 中的所有模型路径并放到存储设备
         for model_instance in storage_model_instances.values():
             set_model_to_device(model_instance, storage_device)
         torch_gc()  # 垃圾回收
         new_model_path = all_model_path[character]
         if new_model_path in load_model_instances:
-            geneface_log.info(f"正在将{new_model_path}从{load_device}移动到{infer_device}...")
+            geneface_log.info(f"正在将推理模型{new_model_path}从{load_device}移动到{infer_device}...")
             storage_model_instances[new_model_path] = load_model_instances.pop(new_model_path)
-        geneface_log.info(f"正在加载{new_model_path}到{infer_device}...")
+        geneface_log.info(f"正在加载推理模型{new_model_path}到{infer_device}...")
         model = storage_model_instances.setdefault(new_model_path, load_model(model_path=new_model_path))
         set_model_to_device(model, infer_device)
         model = storage_model_instances.get(new_model_path)
@@ -237,10 +219,10 @@ def load_model(model_path, device=None, target_dict=None):
         torso_model_dir=inp["torso_ckpt"],
         device=device
     )
-    if target_dict:
-        target_dict[model_path] = model_instance
-    else:
+    if target_dict is None:
         return model_instance
+    else:
+        target_dict[model_path] = model_instance
 
 
 def set_model_to_device(model_instance, device_instance):
@@ -290,7 +272,7 @@ stream_url = config_data['rtsp_url']
 secret_key = os.getenv('GENEFACE-SECRET-KEY', 'sk-geneface')
 CURRENT_CHARACTER = "li"
 geneface_log = logger
-geneface_app = FastAPI()
+geneface_app = FastAPI(lifespan=lifespan)
 # CORS 中间件配置
 # geneface_app.add_middleware(BasicAuthMiddleware, secret_key=secret_key)
 geneface_app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'],
