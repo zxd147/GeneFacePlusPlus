@@ -1,11 +1,9 @@
-export VIDEO_ID=0228_gu_v0
+export VIDEO_ID=$1
 #================data Process================
 # video2img 
 ffmpeg -i data/raw/videos/${VIDEO_ID}.mp4 -vf fps=25,scale=w=512:h=512 -qmin 1 -q:v 1 data/raw/videos/${VIDEO_ID}_512.mp4
 
-mv data/raw/videos/${VIDEO_ID}.mp4 data/raw/videos/${VIDEO_ID}_to_rm.mp4
 mv data/raw/videos/${VIDEO_ID}_512.mp4 data/raw/videos/${VIDEO_ID}.mp4
-rm data/raw/videos/${VIDEO_ID}_to_rm.mp4
 
 # audio_process
 export CUDA_VISIBLE_DEVICES=0
@@ -33,10 +31,10 @@ python data_gen/runs/binarizer_nerf.py --video_id=${VIDEO_ID}
 
 
 #================model train================
-# 还要操作一下yaml文件，不可无脑
+# 还要操作一下yaml文件
 mkdir egs/datasets/${VIDEO_ID}
-cp -r egs/datasets/0202_xxz_v0/  egs/datasets/${VIDEO_ID}
-# datasets/lm3d_radnerf_torso.yaml，datasets/0228_gu_v0/lm3d_radnerf.yaml 需要改,暂时先手动改
+cp -r egs/datasets/May/  egs/datasets/${VIDEO_ID}
+# datasets/lm3d_radnerf_torso.yaml，datasets/${VIDEO_ID}/lm3d_radnerf.yaml 需要改,暂时先手动改
 CUDA_VISIBLE_DEVICES=0 python tasks/run.py --config=egs/datasets/${VIDEO_ID}/lm3d_radnerf_sr.yaml --exp_name=motion2video_nerf/${VIDEO_ID}_head --reset
 CUDA_VISIBLE_DEVICES=0 python tasks/run.py --config=egs/datasets/${VIDEO_ID}/lm3d_radnerf_torso_sr.yaml --exp_name=motion2video_nerf/${VIDEO_ID}_torso --hparams=head_model_dir=checkpoints/motion2video_nerf/${VIDEO_ID}_head --reset
 

@@ -12,7 +12,7 @@ import websockets
 from minio import Minio
 from websockets import exceptions
 
-from config.uitls import read_json_file
+from utils.uitls import read_json_file
 from inference.genefacepp_infer import GeneFace2Infer
 
 # 创建日志记录器
@@ -33,8 +33,8 @@ logger.addHandler(file_handler)
 isBusy = False
 gWsk_remote = None
 data_json = read_json_file('config/config.json')
-socket_ip = data_json['socket_ip_host']
-socket_port = data_json['socket_ip_port']
+socket_ip = data_json['host']
+socket_port = data_json['port']
 base_audio_path = data_json['base_audio_path']
 base_video_path = data_json['base_video_path']
 access_key = data_json['access_key']
@@ -94,7 +94,7 @@ async def handle_client(reader, writer):
 # socket服务端
 async def start_server():
     # 异步 TCP 服务器。
-    server = await asyncio.start_server(handle_client, socket_ip, int(socket_port))
+    server = await asyncio.start_server(handle_client, socket_ip, int(socket_port)+1)
     async with server:
         await server.serve_forever()
 
@@ -158,8 +158,7 @@ def parameter():
     args = parser.parse_args()
     # 静态
     args.a2m_ckpt = data_json['a2m_ckpt']
-    args.torso_ckpt = data_json['torso_ckpt']
-    args.drv_aud = data_json['drv_aud']
+    args.torso_ckpt = data_json["model_path"]["huang"]['torso_ckpt']
     inp = {
         'a2m_ckpt': args.a2m_ckpt,
         'postnet_ckpt': args.postnet_ckpt,

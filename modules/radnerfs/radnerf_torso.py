@@ -48,6 +48,10 @@ class RADNeRFTorso(RADNeRF):
         self.torso_deform_net = MLP(deform_net_in_dim, 2, 64, 3)
         self.torso_canonicial_net = MLP(canonicial_net_in_dim, 4, 32, 3)
 
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
     def forward_torso(self, x, poses, c=None, image=None, weights_sum=None):
         # x: [N, 2] in [-1, 1]
         # head poses: [1, 6]

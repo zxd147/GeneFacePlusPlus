@@ -131,6 +131,10 @@ class RADNeRFwithSR(NeRFRenderer):
         self.sr_net = Superresolution(channels=3)
         self.lambda_ambient = torch.nn.Parameter(torch.tensor([1.0]), requires_grad=False)
 
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
     def on_train_nerf(self):
         self.requires_grad_(True)
         self.sr_net.requires_grad_(False)

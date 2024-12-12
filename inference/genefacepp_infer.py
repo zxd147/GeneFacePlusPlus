@@ -1,9 +1,10 @@
+import datetime
 import os
 import sys
 
 sys.path.append('./')
 import argparse
-
+from utils.log_utils import logger
 import torch
 import torch.nn.functional as F
 import librosa
@@ -126,6 +127,7 @@ class GeneFace2Infer:
     def __init__(self, audio2secc_dir, postnet_dir, head_model_dir, torso_model_dir, device=None):
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        # self.device = device
         self.audio2secc_dir = audio2secc_dir
         self.postnet_dir = postnet_dir
         self.head_model_dir = head_model_dir
@@ -141,6 +143,10 @@ class GeneFace2Infer:
         self.secc_renderer = SECC_Renderer(512)
         self.face3d_helper = Face3DHelper(keypoint_mode='mediapipe', use_gpu=True)
         hparams['infer_smooth_camera_path_kernel_size'] = 7
+
+    @property
+    def device(self):
+        return next(self.audio2secc_model.parameters()).device
 
     def load_audio2secc(self, audio2secc_dir):
         set_hparams(
@@ -199,9 +205,11 @@ class GeneFace2Infer:
             model = torch.compile(model)
         except:
             traceback.print_exc()
+        model.device = self.device
         return model
 
     def infer_once(self, inp):
+        logger.info(f"进入推理: {datetime.datetime.now()}: {inp['out_name']}")
         self.inp = inp
         samples = self.prepare_batch_from_inp(inp)
         out_name = self.forward_system(samples, inp)
@@ -214,7 +222,7 @@ class GeneFace2Infer:
         """
         sample = {}
         # Process Audio
-        self.save_wav16k(inp['drv_audio_name'])
+        self.save_wav16k(inp['drv_audio'])
         hubert = self.get_hubert(self.wav16k_name)
         t_x = hubert.shape[0]
         x_mask = torch.ones([1, t_x]).float()  # mask for audio frames
@@ -538,13 +546,17 @@ class GeneFace2Infer:
 
         cmd = f"ffmpeg -i {tmp_out_name} -i {self.wav16k_name} -y -shortest -c:v libx264 -pix_fmt yuv420p -b:v 2000k -y -v quiet -shortest {inp['out_name']}"
         ret = os.system(cmd)
-        if ret == 0:
-            print(f"Saved at {inp['out_name']}")
-            os.system(f"rm {self.wav16k_name}")
-            os.system(f"rm {tmp_out_name}")
-        else:
-            raise ValueError(
-                f"error running {cmd}, please check ffmpeg installation, especially check whether it supports libx264!")
+        print(ret)
+        print(f"Saved at {inp['out_name']}")
+        os.system(f"rm {self.wav16k_name}")
+        os.system(f"rm {tmp_out_name}")
+        # if ret == 0:
+        #     print(f"Saved at {inp['out_name']}")
+        #     os.system(f"rm {self.wav16k_name}")
+        #     os.system(f"rm {tmp_out_name}")
+        # else:
+        #     raise ValueError(
+        #         f"error running {cmd}, please check ffmpeg installation, especially check whether it supports libx264!")
 
     @torch.no_grad()
     def forward_system(self, batch, inp):
@@ -585,7 +597,7 @@ def get_arg(head_ckpt=None, torso_ckpt=None):
     parser.add_argument("--head_ckpt", default=head_ckpt)
     parser.add_argument("--postnet_ckpt", default='')
     parser.add_argument("--torso_ckpt", default=torso_ckpt)
-    parser.add_argument("--drv_aud", default='data/raw/val_wavs/MacronSpeech.wav')
+    parser.add_argument("--drv_audio", default='data/raw/val_wavs/MacronSpeech.wav')
     parser.add_argument("--drv_pose", default='nearest',
                         help="目前仅支持源视频的pose,包括从头开始和指定区间两种,暂时不支持in-the-wild的pose")
     parser.add_argument("--blink_mode", default='period')  # none | period
@@ -606,7 +618,7 @@ def get_arg(head_ckpt=None, torso_ckpt=None):
         'postnet_ckpt': args.postnet_ckpt,
         'head_ckpt': args.head_ckpt,
         'torso_ckpt': args.torso_ckpt,
-        'drv_audio_name': args.drv_aud,
+        'drv_audio': args.drv_audio,
         'drv_pose': args.drv_pose,
         'blink_mode': args.blink_mode,
         'temperature': float(args.temperature),

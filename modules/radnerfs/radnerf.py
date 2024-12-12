@@ -85,6 +85,10 @@ class RADNeRF(NeRFRenderer):
         self.color_net = MLP(self.direction_embedding_dim + self.geo_feat_dim + self.individual_embedding_dim, 3, self.hidden_dim_color, self.num_layers_color)
         self.dropout = nn.Dropout(p=hparams['cond_dropout_rate'], inplace=False)
 
+    @property
+    def device(self):
+        return next(self.parameters()).device
+
     def cal_cond_feat(self, cond, eye_area_percent=None):
         """
         cond: [B, T, Ç]

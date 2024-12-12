@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
-from config.uitls import read_json_file
+from utils.uitls import read_json_file
 
 
 # 请求数据模型
@@ -94,8 +94,8 @@ SNO_START = 123
 data = read_json_file('config/config.json')
 base_audio_path = data['base_audio_path']
 base_video_path = data['base_video_path']
-socket_host = data['socket_ip_host']
-socket_port = data['socket_ip_port']
+socket_host = data['host']
+socket_port = data['socket_port']
 stream_url = data['rtsp_url']
 
 

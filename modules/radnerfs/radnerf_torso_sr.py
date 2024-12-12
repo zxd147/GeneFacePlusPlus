@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import random
-
+from utils.log_utils import logger
 import modules.radnerfs.raymarching as raymarching
 from modules.radnerfs.encoders.encoding import get_encoder
 from modules.radnerfs.renderer import NeRFRenderer
@@ -54,6 +54,10 @@ class RADNeRFTorsowithSR(RADNeRF):
         self.torso_deform_net = MLP(deform_net_in_dim, 2, 64, 3)
         self.torso_canonicial_net = MLP(canonicial_net_in_dim, 4, 32, 3)
         self.sr_net = Superresolution(channels=3)
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
 
     def on_train_torso_nerf(self):
         self.requires_grad_(False)
@@ -206,12 +210,18 @@ class RADNeRFTorsowithSR(RADNeRF):
         # weights_sum[weights_sum <= 0.95] = 0
 
         if mask.any():
+            # if 'torso_head_aware' not in hparams:
+            #     logger.info(f"111======-----------========---------===========hparams: {hparams}")
+            # else:
+            #     logger.info(f"222======-----------========---------===========hparams: {hparams}")
+
             if hparams['torso_head_aware']:
+            # if hparams.get('torso_head_aware', False):
                 torso_alpha_mask, torso_color_mask, deform = self.forward_torso(bg_coords[mask], poses, torso_individual_code, image[mask], weights_sum.unsqueeze(-1)[mask], lm68=lm68)
                 # if random.random() < 0.5:
-                    # torso_alpha_mask, torso_color_mask, deform = self.forward_torso(bg_coords[mask], poses, torso_individual_code, image[mask], weights_sum.unsqueeze(-1)[mask])
+                # torso_alpha_mask, torso_color_mask, deform = self.forward_torso(bg_coords[mask], poses, torso_individual_code, image[mask], weights_sum.unsqueeze(-1)[mask])
                 # else:
-                    # torso_alpha_mask, torso_color_mask, deform = self.forward_torso(bg_coords[mask], poses, torso_individual_code, None, None)
+                # torso_alpha_mask, torso_color_mask, deform = self.forward_torso(bg_coords[mask], poses, torso_individual_code, None, None)
             else:
                 torso_alpha_mask, torso_color_mask, deform = self.forward_torso(bg_coords[mask], poses, torso_individual_code, lm68=lm68)
             torso_alpha[mask] = torso_alpha_mask.float()

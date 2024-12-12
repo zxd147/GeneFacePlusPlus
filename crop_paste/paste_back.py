@@ -2,9 +2,9 @@ import os
 import cv2
 from tqdm import tqdm
 from insightface.app import FaceAnalysis
-from config.uitls import VideoReader, extract_face_get_anchor, add_alpha_channel
+from utils.uitls import VideoReader, extract_face_get_anchor, add_alpha_channel
 import numpy as np
-from config.one_euro import OneEuroFilter
+from utils.one_euro import OneEuroFilter
 
 app = FaceAnalysis(allowed_modules=['detection', 'landmark_2d_106'], providers=['CUDAExecutionProvider'])
 app.prepare(ctx_id=0, det_size=(256, 256))
