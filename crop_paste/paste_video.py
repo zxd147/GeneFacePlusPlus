@@ -11,7 +11,7 @@ import numpy as np
 from moviepy.editor import VideoFileClip, CompositeVideoClip, AudioFileClip
 
 
-def paste(ori_video, infer_video):
+def paste_back(ori_video, infer_video, final_video_path=None, crop_coordinates=None):
     start = time.time()
 
     output_dir = os.path.dirname(infer_video)  # 获取视频文件的目录, output
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     ori_path = opt.ori_video
     infer_path = opt.infer_video
     crop_coordinates_npy = ori_path.replace('mp4', 'npy')
-    # final_output_video = paste(ori_path, infer_path)
+    # final_output_video = paste_back(ori_path, infer_path)
     final_output_video = infer_merge_video(ori_path, infer_path, crop_coordinates_npy)
     print(f"save in {final_output_video}!")
     print("paste done!")

@@ -1,0 +1,4 @@
+class PitchContourCNNPostNet:
+    pass
+
+
