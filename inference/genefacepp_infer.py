@@ -46,6 +46,8 @@ from modules.radnerfs.radnerf_torso import RADNeRFTorso
 from modules.radnerfs.radnerf_torso_sr import RADNeRFTorsowithSR
 
 face3d_helper = None
+# 设置全局锁
+tqdm_lock = tqdm.tqdm.get_lock()
 
 
 def vis_cano_lm3d_to_imgs(cano_lm3d, hw=512):
@@ -209,11 +211,12 @@ class GeneFace2Infer:
         return model
 
     def infer_once(self, inp):
-        logger.info(f"进入推理: {datetime.datetime.now()}: {inp['out_name']}")
-        self.inp = inp
-        samples = self.prepare_batch_from_inp(inp)
-        out_name = self.forward_system(samples, inp)
-        return out_name
+        with torch.no_grad():
+            logger.info(f"进入推理: {datetime.datetime.now()}: {inp['out_name']}")
+            self.inp = inp
+            samples = self.prepare_batch_from_inp(inp)
+            out_name = self.forward_system(samples, inp)
+            return out_name
 
     def prepare_batch_from_inp(self, inp):
         """
@@ -338,13 +341,17 @@ class GeneFace2Infer:
                 chunk_size = 50
                 drv_secc_color_lst = []
                 num_iters = len(id) // chunk_size if len(id) % chunk_size == 0 else len(id) // chunk_size + 1
-                for i in tqdm.trange(num_iters, desc="rendering secc"):
+                # for i in tqdm.trange(num_iters, desc="rendering secc"):
+                # 删除 tqdm 进度条
+                logger.debug(f"=== forward_audio2secc 开始处理数据 ===: {inp['drv_audio']}...\n")
+                for i in range(num_iters):  # 或使用其他适合的循环形式
                     torch.cuda.empty_cache()
                     face_mask, drv_secc_color = self.secc_renderer(id[i * chunk_size:(i + 1) * chunk_size],
                                                                    exp[i * chunk_size:(i + 1) * chunk_size],
                                                                    zero_eulers[i * chunk_size:(i + 1) * chunk_size],
                                                                    zero_trans[i * chunk_size:(i + 1) * chunk_size])
                     drv_secc_color_lst.append(drv_secc_color.cpu())
+                logger.debug(f"=== forward_audio2secc 数据处理完成 ===\n")
             drv_secc_colors = torch.cat(drv_secc_color_lst, dim=0)
             _, src_secc_color = self.secc_renderer(id[0:1], exp[0:1], zero_eulers[0:1], zero_trans[0:1])
             _, cano_secc_color = self.secc_renderer(id[0:1] * 0, exp[0:1] * 0, zero_eulers[0:1], zero_trans[0:1])
@@ -486,37 +493,46 @@ class GeneFace2Infer:
 
             with torch.cuda.amp.autocast(enabled=True):
                 # forward neural renderer
+                # for i in range(num_frames):
+                logger.debug(f"=== forward_secc2video 开始处理数据 ===: {inp['drv_audio']}...\n")
+                # with tqdm_lock:
                 for i in tqdm.trange(num_frames, desc="GeneFace++ is rendering... "):
-                    model_out = self.secc2video_model.render(rays_o[i], rays_d[i], cond_inp[i], bg_coords, poses[i],
-                                                             index=i, staged=False, bg_color=bg_color, lm68=lm68s[i],
-                                                             perturb=False, force_all_rays=False,
-                                                             T_thresh=inp['raymarching_end_threshold'],
-                                                             eye_area_percent=eye_area_percent[i],
-                                                             **hparams)
-                    if self.secc2video_hparams.get('with_sr', False):
-                        pred_rgb = model_out['sr_rgb_map'][0].cpu()  # [c, h, w]
-                    else:
-                        pred_rgb = model_out['rgb_map'][0].reshape([512, 512, 3]).permute(2, 0, 1).cpu()
-                    img = (pred_rgb.permute(1, 2, 0) * 255.).int().cpu().numpy().astype(np.uint8)
-                    writer.append_data(img)
+                    with tqdm_lock:
+                        model_out = self.secc2video_model.render(rays_o[i], rays_d[i], cond_inp[i], bg_coords, poses[i],
+                                                                 index=i, staged=False, bg_color=bg_color, lm68=lm68s[i],
+                                                                 perturb=False, force_all_rays=False,
+                                                                 T_thresh=inp['raymarching_end_threshold'],
+                                                                 eye_area_percent=eye_area_percent[i],
+                                                                 **hparams)
+                        if self.secc2video_hparams.get('with_sr', False):
+                            pred_rgb = model_out['sr_rgb_map'][0].cpu()  # [c, h, w]
+                        else:
+                            pred_rgb = model_out['rgb_map'][0].reshape([512, 512, 3]).permute(2, 0, 1).cpu()
+                        img = (pred_rgb.permute(1, 2, 0) * 255.).int().cpu().numpy().astype(np.uint8)
+                        writer.append_data(img)
+                logger.debug(f"=== forward_secc2video 数据处理完成 ===\n")
             writer.close()
 
         else:
             with torch.cuda.amp.autocast(enabled=True):
                 # forward neural renderer
+                # for i in range(num_frames):
+                logger.debug(f"=== forward_secc2video 开始处理数据 ===: {inp['out_name']}...\n")
                 for i in tqdm.trange(num_frames, desc="GeneFace++ is rendering... "):
-                    model_out = self.secc2video_model.render(rays_o[i], rays_d[i], cond_inp[i], bg_coords, poses[i],
-                                                             index=i, staged=False, bg_color=bg_color, lm68=lm68s[i],
-                                                             perturb=False, force_all_rays=False,
-                                                             T_thresh=inp['raymarching_end_threshold'],
-                                                             eye_area_percent=eye_area_percent[i],
-                                                             **hparams)
-                    if self.secc2video_hparams.get('with_sr', False):
-                        pred_rgb = model_out['sr_rgb_map'][0].cpu()  # [c, h, w]
-                    else:
-                        pred_rgb = model_out['rgb_map'][0].reshape([512, 512, 3]).permute(2, 0, 1).cpu()
+                    with tqdm_lock:
+                        model_out = self.secc2video_model.render(rays_o[i], rays_d[i], cond_inp[i], bg_coords, poses[i],
+                                                                 index=i, staged=False, bg_color=bg_color, lm68=lm68s[i],
+                                                                 perturb=False, force_all_rays=False,
+                                                                 T_thresh=inp['raymarching_end_threshold'],
+                                                                 eye_area_percent=eye_area_percent[i],
+                                                                 **hparams)
+                        if self.secc2video_hparams.get('with_sr', False):
+                            pred_rgb = model_out['sr_rgb_map'][0].cpu()  # [c, h, w]
+                        else:
+                            pred_rgb = model_out['rgb_map'][0].reshape([512, 512, 3]).permute(2, 0, 1).cpu()
+                        pred_rgb_lst.append(pred_rgb)
+                logger.debug(f"=== forward_secc2video 数据处理完成 ===\n")
 
-                    pred_rgb_lst.append(pred_rgb)
             pred_rgbs = torch.stack(pred_rgb_lst).cpu()
             pred_rgbs = pred_rgbs * 2 - 1  # to -1~1 scale
 
@@ -540,8 +556,11 @@ class GeneFace2Infer:
             tmp_out_name = inp['out_name'].replace(".mp4", ".tmp.mp4")
             out_imgs = ((imgs.permute(0, 2, 3, 1) + 1) / 2 * 255).int().cpu().numpy().astype(np.uint8)
             writer = imageio.get_writer(tmp_out_name, fps=25, format='FFMPEG', codec='h264')
-            for i in tqdm.trange(len(out_imgs), desc=f"ImageIO is saving video using FFMPEG(h264) to {tmp_out_name}"):
+            # for i in tqdm.trange(len(out_imgs), desc=f"ImageIO is saving video using FFMPEG(h264) to {tmp_out_name}"):
+            logger.debug(f"=== ImageIO is saving video using FFMPEG(h264) to {tmp_out_name} 开始处理数据 ===: {inp['out_name']}...")
+            for i in range(len(out_imgs)):
                 writer.append_data(out_imgs[i])
+            logger.debug(f"=== ImageIO is saving video using FFMPEG(h264) to {tmp_out_name} 数据处理完成 ===\n")
             writer.close()
 
         cmd = f"ffmpeg -i {tmp_out_name} -i {self.wav16k_name} -y -shortest -c:v libx264 -pix_fmt yuv420p -b:v 2000k -y -v quiet -shortest {inp['out_name']}"
