@@ -1,5 +1,4 @@
 import asyncio
-import concurrent
 import copy
 import gc
 import json
@@ -133,14 +132,10 @@ async def lifespan(geneface_app: FastAPI):
         geneface_log.info("启动中...")
         # 初始化系统
         # llm_config, embedder_config = get_config(new_llm_model=None)
-        infer_para = get_arg()
-        infer_para['character'] = CURRENT_CHARACTER
-        infer_para['torso_ckpt'] = inference_info[CURRENT_CHARACTER]['torso_ckpt']
-        infer_para['head_ckpt'] = inference_info[CURRENT_CHARACTER]['head_ckpt']
         if parallel is None:
-            await refresh_models(infer_para, parallel)
+            await refresh_models(CURRENT_CHARACTER)
         else:
-            await get_models(infer_para, parallel)
+            await get_models(CURRENT_CHARACTER, parallel)
         # 让应用继续运行
         yield
     except Exception as e:
@@ -152,266 +147,282 @@ async def lifespan(geneface_app: FastAPI):
 
 async def init_app():
     if torch.cuda.is_available():
-        log = f'本次加载推理模型的设备为GPU: {torch.cuda.get_device_name(0)}.\n'
+        log = f'本次加载推理模型的设备为GPU: {torch.cuda.get_device_name(0)}'
     else:
-        log = '本次加载推理模型的设备为CPU.\n'
-    log += f"Service started!"
+        log = '本次加载推理模型的设备为CPU.'
+    geneface_log.info(log)
+    log = f"Service started!"
     geneface_log.info(log)
 
 
-async def refresh_models(infer_para, is_parallel=None, infer_device=None):
+async def refresh_models(character, infer_device=None):
+    infer_device = infer_device or ('cuda' if torch.cuda.is_available() else 'cpu')
     global CURRENT_CHARACTER, model  # 声明这些变量是全局变量
-    character = infer_para['character']
-    if is_parallel is None:
-        infer_device = infer_device or ('cuda' if torch.cuda.is_available() else 'cpu')
-        if character in inference_info and (not character == CURRENT_CHARACTER or not model):
-            if not model:
-                inference_info[character]['infer_queue'] = queue.Queue(maxsize=10)
-                inference_info[character]['queue_lock'] = threading.Lock()
-                inference_info[character]['target_device'] = infer_device
-            geneface_log.info(f"检测到模型发生变化，正在重新初始化为：{character}")
-            model = await load_model(infer_para)
-            torch_gc()
-            CURRENT_CHARACTER = character
-            geneface_log.info("模型初始化完成")
-        return {"status": "success"}
+    if not character == CURRENT_CHARACTER or not model:
+        geneface_log.info(f"检测到模型发生变化，正在重新初始化为：{character}")
+        model_path = model_path_dict[character]['torso_ckpt']
+        infer_info[model_path] = {}
+        infer_info[model_path]["queue"] = asyncio.Queue(maxsize=1)
+        infer_info[model_path]["device"] = infer_device
+        infer_info[model_path]["lock"] = asyncio.Lock()
+        model = storage_model_instances.get(model_path) or await load_model(model_path=model_path)
+        CURRENT_CHARACTER = character
+        geneface_log.info("模型初始化完成")
+    return {"status": "success"}
 
 
-async def get_models(infer_para, is_parallel, infer_device=None, storage_device=None, init_device=None):
-    character = infer_para['character']
-    new_model_path = infer_para['torso_ckpt'] or infer_para['head_ckpt']
-    if is_parallel is not None:
-        global CURRENT_CHARACTER, init_model_instances, storage_model_instances
-        # 选择推理设备，默认使用 cuda（如果可用），否则使用 cpu
-        infer_device = infer_device or ('cuda' if torch.cuda.is_available() else 'cpu')
-        # 根据并行推理决定存储设备，默认使用 infer_device，如果未提供 storage_device 则使用 'cpu'
-        storage_device = infer_device if is_parallel else (storage_device or 'cpu')
-        # 设置加载设备，如果未提供则默认使用 'cpu'
-        init_device = init_device or 'cpu'
-        # 确保 character 是有效值
-        if character not in inference_info:
-            raise ValueError(f"Character '{character}' not found in inference_info keys.")
-        if not storage_model_instances:
-            geneface_log.info("检测到未存储模型, 开始加载...")
-            # 遍历 model_path_dict 中的所有模型路径, 根据模型名称选择设备和存储实例
-            for character_name, character_info in inference_info.items():
-                model_path = character_info['torso_ckpt'] or infer_para['head_ckpt']
-                storage_model_instances[model_path] = None
-                load_device, target_dict = (
-                    (init_device, init_model_instances)
-                    if character_name != character
-                    else (infer_device, storage_model_instances)
-                )
-                character_info['infer_queue'] = queue.Queue(maxsize=10)
-                character_info['queue_lock'] = threading.Lock()
-                character_info['target_device'] = load_device
-                geneface_log.info(f"正在加载推理模型{character_name}到{load_device}...")
-                # 加载模型
-                await load_model(infer_para, load_device, target_dict)
-
-            # 计算模型总数
-            # total_models = len(storage_model_instances) + len(init_model_instances)
-            load_models_count = sum(1 for v in init_model_instances.values() if v is not None)
-            storage_models_count = sum(1 for v in storage_model_instances.values() if v is not None)
-            total_models_count = load_models_count + storage_models_count
-            # 打印成功加载的模型个数
-            geneface_log.info(f"成功加载模型个数: {total_models_count}个, 当前使用的模型为{character}.")
-            inference_info[character]['model'] = storage_model_instances[new_model_path]
-            torch_gc()
-            CURRENT_CHARACTER = character
-            result = {"status": "success", "message": "models loaded", "character": character, "device": infer_device}
-            geneface_log.debug(result)
-        elif not character == CURRENT_CHARACTER:
-            geneface_log.info(f"检测到模型发生变化，正在重新初始化推理模型{character}到设备{infer_device}...")
-            if new_model_path in init_model_instances:
-                geneface_log.info(
-                    f"正在将推理模型{Path(new_model_path).name}, 从 storage_model_instances 移动到 init_model_instances ...")
-                storage_model_instances[new_model_path] = init_model_instances.pop(new_model_path)
-            # 遍历 model_path_dict 中的所有模型路径并放到存储设备
-            set_tasks = []
-            # for model_path, model_instance in storage_model_instances.items():
-            for character_name, character_info in inference_info.items():
-                model_path = character_info['torso_ckpt'] or infer_para['head_ckpt']
-                model_instance = storage_model_instances[model_path]
-                if character_name == character or is_parallel or model_instance is None:
-                    continue
-                inference_info[character]["target_device"] = storage_device
-                geneface_log.info(f"等待移动推理模型{Path(model_path).name}到{storage_device}...")
-                # task = set_model_to_device(character_name, model_path, model_instance, storage_device, thread=True)
-                set_tasks.append(asyncio.wait_for(task, timeout=60))
-                # _ = asyncio.create_task(set_model_to_device(model_path, model_instance, storage_device, thread=True))
-                # _ = asyncio.to_thread(set_model_to_device, model_path, model_instance, storage_device, thread=True)
-                # loop = asyncio.get_event_loop()
-                # asyncio.run_coroutine_threadsafe(set_model_to_device(model_path, model_instance, storage_device, wait=True), loop)
-            _ = await asyncio.gather(*set_tasks)
-            geneface_log.info(f"正在移动推理模型{Path(new_model_path).name}到{infer_device}...")
-            inference_info[new_model_path]["target_device"] = infer_device
-            inference_info[character]['model'] = storage_model_instances[new_model_path]
-            await set_model_to_device(character, new_model_path, storage_model_instances[new_model_path], infer_device)
-            torch_gc()  # 垃圾回收
-            CURRENT_CHARACTER = character
-            result = {"status": "success", "message": "change model", "character": character, "device": infer_device}
-            geneface_log.debug(result)
-        else:
-            result = {"status": "success", "message": "no changes", "character": character, "device": infer_device}
-            geneface_log.debug(result)
-        return result
+async def get_models(character, is_parallel, infer_device=None, storage_device=None, load_device=None):
+    global CURRENT_CHARACTER, load_model_instances, storage_model_instances, model, infer_info
+    # 选择推理设备，默认使用 cuda（如果可用），否则使用 cpu
+    infer_device = infer_device or ('cuda' if torch.cuda.is_available() else 'cpu')
+    # 根据并行推理决定存储设备，默认使用 infer_device，如果未提供 storage_device 则使用 'cpu'
+    storage_device = infer_device if is_parallel else (storage_device or 'cpu')
+    # 设置加载设备，如果未提供则默认使用 'cpu'
+    load_device = load_device or 'cpu'
+    # 确保 character 是有效值
+    if character not in model_path_dict:
+        raise ValueError(f"Character '{character}' not found in model_path_dict keys.")
+    if not model:
+        geneface_log.info("检测到未加载模型, 开始加载...")
+        # 遍历 model_path_dict 中的所有模型路径, 根据模型名称选择设备和存储实例
+        for model_name, model_path in model_path_dict.items():
+            model_path = model_path['torso_ckpt']
+            storage_model_instances[model_path] = None
+            device, model_instances = (
+                (load_device, load_model_instances)
+                if model_name != character
+                else (infer_device, storage_model_instances)
+            )
+            infer_info[model_path] = {}
+            infer_info[model_path]["queue"] = asyncio.Queue(maxsize=1)
+            infer_info[model_path]["device"] = device
+            infer_info[model_path]["lock"] = asyncio.Lock()
+            # infer_info[model_path]["queue"] = queue.Queue(maxsize=1)
+            # infer_info[model_path]["lock"] = threading.Lock()
+            geneface_log.info(f"正在加载推理模型{model_name}到{device}...")
+            # 加载模型
+            await load_model(model_path, device, model_instances)
+        # 计算模型总数
+        # total_models = len(storage_model_instances) + len(load_model_instances)
+        load_models_count = sum(1 for v in load_model_instances.values() if v is not None)
+        storage_models_count = sum(1 for v in storage_model_instances.values() if v is not None)
+        total_models_count = load_models_count + storage_models_count
+        # 打印成功加载的模型个数
+        geneface_log.info(f"成功加载模型个数: {total_models_count}个, 当前使用的模型为{character}.")
+        model = storage_model_instances[model_path_dict[character]['torso_ckpt']]
+        result = {"status": "success", "message": "models loaded", "character": character, "device": infer_device}
+        geneface_log.debug(result)
+        CURRENT_CHARACTER = character
+    elif not character == CURRENT_CHARACTER:
+        geneface_log.info(f"检测到模型发生变化，正在重新初始化推理模型{character}到设备{infer_device}...")
+        new_model_path = model_path_dict[character]['torso_ckpt']
+        if new_model_path in load_model_instances:
+            geneface_log.info(
+                f"正在将推理模型{Path(new_model_path).name}, 从 storage_model_instances 移动到 load_model_instances ...")
+            storage_model_instances[new_model_path] = load_model_instances.pop(new_model_path)
+        # 遍历 model_path_dict 中的所有模型路径并放到存储设备
+        set_tasks = []
+        for model_path, model_instance in storage_model_instances.items():
+            if model_path == new_model_path or is_parallel or model_instance is None:
+                continue
+            infer_info[model_path]["device"] = storage_device
+            geneface_log.info(f"等待移动推理模型{Path(model_path).name}到{storage_device}...")
+            task = set_model_to_device(model_path, model_instance, storage_device, thread=True)
+            set_tasks.append(task)
+            # _ = asyncio.create_task(set_model_to_device(model_path, model_instance, storage_device, thread=True))
+            # _ = asyncio.to_thread(set_model_to_device, model_path, model_instance, storage_device, thread=True)
+            # loop = asyncio.get_event_loop()
+            # asyncio.run_coroutine_threadsafe(set_model_to_device(model_path, model_instance, storage_device, wait=True), loop)
+        _ = await asyncio.gather(*set_tasks)
+        torch_gc()  # 垃圾回收
+        geneface_log.info(f"正在移动推理模型{Path(new_model_path).name}到{infer_device}...")
+        infer_info[new_model_path]["device"] = infer_device
+        model = storage_model_instances.setdefault(new_model_path, await load_model(model_path=new_model_path))
+        await set_model_to_device(new_model_path, model, infer_device)
+        result = {"status": "success", "message": "change model", "character": character, "device": infer_device}
+        geneface_log.debug(result)
+        CURRENT_CHARACTER = character
+    else:
+        result = {"status": "success", "message": "no changes", "character": character, "device": infer_device}
+        geneface_log.debug(result)
+    return result
 
 
-async def load_model(infer_para, load_device=None, target_dict=None):
+async def load_model(model_path, device=None, target_dict=None):
     """加载或更新模型，移动到指定设备，并放入目标字典"""
-    model_instance = GeneFace2Infer(torso_model_dir=infer_para['torso_ckpt'], head_model_dir=infer_para['head_ckpt'],
-                                    device=load_device)
-    model_path = infer_para['torso_ckpt'] or infer_para['head_ckpt']
+    # inp = get_arg(torso_ckpt=model_path)
+    model_instance = GeneFace2Infer(
+        audio2secc_dir=inp["a2m_ckpt"],
+        postnet_dir=inp["postnet_ckpt"],
+        head_model_dir=inp["head_ckpt"],
+        torso_model_dir=model_path,
+        device=device
+    )
+    # sub_models = [model_instance.audio2secc_model, model_instance.secc2video_model, model_instance.postnet_model]
+    # for sub_model in sub_models:
+    #     if sub_model:
+    #         for param in sub_model.parameters():
+    #             param.requires_grad = False
     # 提前返回：如果没有传入 target_dict，则直接返回实例
     if target_dict is None:
         return model_instance
     target_dict[model_path] = model_instance
+    torch_gc()
 
 
-async def set_model_to_device(character_name, model_path, model_instance, device_instance, thread=False):
+async def set_model_to_device(model_path, model_instance, device_instance, thread=False):
     """将模型及其组件移动到指定设备并设置为 eval 模式。"""
 
-    def to_device():
+    def to_device(device):
         # 遍历每个模型组件并移动到目标设备，且设置为eval模式
         for sub_model in sub_models:
             if sub_model:  # 确保模型存在
-                sub_model.to(target_device).eval()
+                sub_model.to(device).eval()
                 torch_gc()
 
-    infer_queue = inference_info[character_name].get("infer_queue")
-    target_device = inference_info[character_name]["target_device"]
+    global infer_info
+    infer_lock = infer_info[model_path].get("lock", asyncio.Lock())  # 用于线程安全
+    infer_queue = infer_info[model_path].get("queue", queue.Queue)
+    # infer_queue = infer_info[model_path].get("queue", asyncio.Queue)
+    # infer_lock = infer_info[model_path].get("lock", threading.Lock())  # 用于线程安全
+
     # 定义所有模型组件的列表
     sub_models = [model_instance.audio2secc_model, model_instance.secc2video_model, model_instance.postnet_model]
-    if model_instance.audio2secc_model.device != target_device:
+    if model_instance.audio2secc_model.device != infer_info[model_path]["device"]:
         if thread:
-            if not infer_queue.empty():  # 如果队列不为空，说明有任务正在进行
-                msg = f'Model "{Path(model_path).name}" is busy. Waiting for the current task to finish.'
-                geneface_log.info(msg)
-                infer_queue.join()  # 等待队列完成当前任务
-            # _ = asyncio.wait_for(asyncio.to_thread(to_device), timeout=30)
-            _ = asyncio.to_thread(to_device)
+            async with infer_lock:  # 保证队列操作线程安全
+                if not infer_queue.empty():  # 如果队列不为空，说明已有任务在进行
+                    msg = f'Model "{Path(model_path).name}" is busy. Waiting for the current task to finish.'
+                    geneface_log.info(msg)
+                    await infer_queue.join()  # 等待队列完成当前任务
+                # to_device(infer_info[model_path]["device"])
+                _ = asyncio.to_thread(to_device, infer_info[model_path]["device"])
         else:
-            geneface_log.debug(
+            geneface_log.info(
                 f"-------开始移动-------{model_path}, {infer_queue.qsize()}, {device_instance}, {thread}-------开始移动-------")
-            to_device()
-            geneface_log.debug(
+            to_device(infer_info[model_path]["device"])
+            geneface_log.info(
                 f"=======移动完成======={model_path}, {infer_queue.qsize()}, {device_instance}, {thread}=======移动完成=======")
     else:
         geneface_log.info(
-            f"模型{Path(model_path).name}已在目标设备, 无需移动")
+            f"模型{Path(model_path).name}无需移动")
 
 
-async def run_inference_async(infer_para):
-    paste = infer_para['paste']
-    character = infer_para['character']
-    blocking = infer_para['blocking']
-    final_video_path = infer_para['final_video_path']
-    crop_video_path = infer_para['out_name']
-    ori_video_path = inference_info[character]['ori_video']
-    crop_coordinates_list = inference_info[character]['crop_coordinates']
-    logs = f"inference parameters: {infer_para}"
+async def run_inference_async(data, blocking=True):
+    paste = data['paste']
+    character = data['character']
+    video_dir = data['video_dir']
+    video_id = data['video_id']
+    ori_video_path = ori_video_dict[character]['ori_video']
+    crop_coordinates_tuple = ori_video_dict[character]['crop_coordinates']
+    final_video_name = f"{video_id}.mp4"
+    cropped_video_name = f"{video_id}.cropped.mp4"
+    final_video_path = os.path.join(video_dir, final_video_name)
+    crop_video_path = os.path.join(video_dir, cropped_video_name)
+    logs = f"inference param: {data}"
     geneface_log.info(logs)
-    loop = asyncio.get_event_loop()
-    task = loop.run_in_executor(thread_executor, infer_in_executor, infer_para)
-    _ = await task if blocking else None
-    _ if paste == 'default' else paste_back(crop_video_path, ori_video_path, final_video_path, crop_coordinates_list)
-    return final_video_path
-
-
-def infer_in_executor(infer_para):
-    character = infer_para['character']
-    is_parallel = infer_para['parallel']
     # 队列逻辑确保只有一个任务进行
-    infer_queue = inference_info[character]["infer_queue"]
-    infer_lock = inference_info[character]["queue_lock"]
-    timeout = infer_para.get("timeout", 30)  # 超时时间（秒），默认 30 秒
-
-    def inference_task():
-        with torch.no_grad():
-            model.infer_once(infer_para) if is_parallel is None else inference_info[character]['model'].infer_once(infer_para)
-
-    # with infer_lock:  # 保证队列操作线程安全
-    if True:  # 模拟锁占位
-        geneface_log.debug(f"AAA {character}开始推理{infer_queue.qsize()}, {infer_lock}")
-        geneface_log.debug(f"BBB {character}开始推理{infer_queue.qsize()}")
+    model_path = model_path_dict[character]['torso_ckpt']
+    infer_queue = infer_info[model_path]["queue"]
+    infer_lock = infer_info[model_path]["lock"]
+    # await queue.join()  # 等待队列完成当前任务
+    async with infer_lock:  # 保证队列操作线程安全
+        if not infer_queue.empty():  # 如果队列不为空，说明已有任务在进行
+            msg = f'Model "{character}" is busy. Waiting for the current task to finish.'
+            geneface_log.info(msg)
+            await infer_queue.join()  # 等待队列完成当前任务
+        msg = f"Adding task to model {character}'s queue."
+        geneface_log.info(msg)
+        geneface_log.info(f"AAA {character}开始推理{infer_queue.qsize()}, {infer_lock}")
+        await infer_queue.put(video_id)
+        geneface_log.info(f"BBB {character}开始推理{infer_queue.qsize()}")
+        infer_para = copy.deepcopy(inp)
+        infer_para['drv_audio'] = data['audio_path']
+        infer_para['out_name'] = final_video_path if paste == 'default' else crop_video_path
         try:
-            # 使用 ThreadPoolExecutor 执行推理任务
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(inference_task)
-                future.result(timeout=timeout)  # 设置超时时间
-        except concurrent.futures.TimeoutError as te:
-            raise RuntimeError(f"{te}: Task for {character} timed out after {timeout} seconds!")
-        except Exception as e:
-            raise RuntimeError(f"Error during inference: {e}")
+            # task = model.infer_once(infer_para)  # 进行推理
+            # infer_thread = asyncio.to_thread(model.infer_once, infer_para)
+            # task = asyncio.wait_for(infer_thread, timeout=60)  # 进行推理
+            # _ = await task if blocking else asyncio.create_task(task)
+            with torch.no_grad():
+                loop = asyncio.get_event_loop()
+                task = loop.run_in_executor(thread_executor, model.infer_once, infer_para)
+                _ = await task if blocking else None
+        except asyncio.TimeoutError:
+            raise RuntimeError(f"Task for {character} timed out!")
         finally:
             torch_gc()
             if not infer_queue.empty():
                 try:
-                    geneface_log.debug(f"CCC {character}推理结束{infer_queue.qsize()}")
-                    infer_queue.get()
-                    geneface_log.debug(f"DDD {character}推理结束{infer_queue.qsize()}")
-                    geneface_log.info(f"Task removed from queue for model: {character}")
+                    geneface_log.info(f"CCC {character}推理结束{infer_queue.qsize()}")
+                    await infer_queue.get()
+                    geneface_log.info(f"DDD {character}推理结束{infer_queue.qsize()}")
+                    infer_queue.task_done()
+                    geneface_log.info(f"Task removed from queue for model: {model_path}")
                 except Exception as e:
                     raise RuntimeError(f"Error cleaning up queue: {e}")
 
+    video_path = final_video_path if paste == 'default' else paste_back(crop_video_path, ori_video_path,
+                                                                        final_video_path, crop_coordinates_tuple)
+    return video_path
 
-# def run_inference_sync(infer_para, blocking=True):
-#     paste = infer_para['paste']
-#     character = infer_para['character']
-#     video_dir = infer_para['video_dir']
-#     video_id = infer_para['video_id']
-#     ori_video_path = inference_info[character]['ori_video']
-#     crop_coordinates_tuple = inference_info[character]['crop_coordinates']
-#     final_video_name = f"{video_id}.mp4"
-#     cropped_video_name = f"{video_id}.cropped.mp4"
-#     final_video_path = os.path.join(video_dir, final_video_name)
-#     crop_video_path = os.path.join(video_dir, cropped_video_name)
-#     logs = f"inference param: {infer_para}"
-#     geneface_log.info(logs)
-#     infer_para = copy.deepcopy(infer_para)
-#     infer_para['drv_audio'] = infer_para['audio_path']
-#     infer_para['out_name'] = final_video_path if paste == 'default' else crop_video_path
-#     # 队列逻辑确保只有一个任务进行
-#     model_path = inference_info[character]['torso_ckpt']
-#     infer_queue = inference_info[model_path].get("queue", queue.Queue)
-#     infer_lock = inference_info[model_path].get("lock", threading.Lock())
-#     # queue.join()  # 等待队列完成当前任务
-#     with infer_lock:  # 保证队列操作线程安全
-#         if not infer_queue.empty():  # 如果队列不为空，说明已有任务在进行
-#             msg = f'Model "{character}" is busy. Waiting for the current task to finish.'
-#             geneface_log.info(msg)
-#             infer_queue.join()  # 等待队列完成当前任务
-#         msg = f"Adding task to model {character}'s queue."
-#         geneface_log.info(msg)
-#         geneface_log.info(f"AAA {character}开始推理{infer_queue.qsize()}, {infer_lock}")
-#         infer_queue.put(video_id)
-#         geneface_log.info(f"BBB {character}开始推理{infer_queue.qsize()}")
-#         try:
-#             # task = model.infer_once(infer_para)  # 进行推理
-#             # infer_thread = asyncio.to_thread(model.infer_once, infer_para)
-#             # task = asyncio.wait_for(infer_thread, timeout=60)  # 进行推理
-#             # _ = await task if blocking else asyncio.create_task(task)
-#             loop = asyncio.get_event_loop()
-#             task = loop.run_in_executor(thread_executor, model.infer_once, infer_para)
-#             _ = task if blocking else None
-#         except asyncio.TimeoutError:
-#             raise RuntimeError(f"Task for {character} timed out!")
-#         finally:
-#             torch_gc()
-#             if not infer_queue.empty():
-#                 try:
-#                     geneface_log.info(f"CCC {character}推理结束{infer_queue.qsize()}")
-#                     infer_queue.get()
-#                     geneface_log.info(f"DDD {character}推理结束{infer_queue.qsize()}")
-#                     infer_queue.task_done()
-#                     geneface_log.info(f"Task removed from queue for model: {model_path}")
-#                 except Exception as e:
-#                     raise RuntimeError(f"Error cleaning up queue: {e}")
-#
-#     video_path = final_video_path if paste == 'default' else paste_back(crop_video_path, ori_video_path,
-#                                                                         final_video_path, crop_coordinates_tuple)
-#     return video_path
+
+def run_inference_sync(data, blocking=True):
+    paste = data['paste']
+    character = data['character']
+    video_dir = data['video_dir']
+    video_id = data['video_id']
+    ori_video_path = ori_video_dict[character]['ori_video']
+    crop_coordinates_tuple = ori_video_dict[character]['crop_coordinates']
+    final_video_name = f"{video_id}.mp4"
+    cropped_video_name = f"{video_id}.cropped.mp4"
+    final_video_path = os.path.join(video_dir, final_video_name)
+    crop_video_path = os.path.join(video_dir, cropped_video_name)
+    logs = f"inference param: {data}"
+    geneface_log.info(logs)
+    infer_para = copy.deepcopy(inp)
+    infer_para['drv_audio'] = data['audio_path']
+    infer_para['out_name'] = final_video_path if paste == 'default' else crop_video_path
+    # 队列逻辑确保只有一个任务进行
+    model_path = model_path_dict[character]['torso_ckpt']
+    infer_queue = infer_info[model_path].get("queue", queue.Queue)
+    infer_lock = infer_info[model_path].get("lock", threading.Lock())
+    # queue.join()  # 等待队列完成当前任务
+    with infer_lock:  # 保证队列操作线程安全
+        if not infer_queue.empty():  # 如果队列不为空，说明已有任务在进行
+            msg = f'Model "{character}" is busy. Waiting for the current task to finish.'
+            geneface_log.info(msg)
+            infer_queue.join()  # 等待队列完成当前任务
+        msg = f"Adding task to model {character}'s queue."
+        geneface_log.info(msg)
+        geneface_log.info(f"AAA {character}开始推理{infer_queue.qsize()}, {infer_lock}")
+        infer_queue.put(video_id)
+        geneface_log.info(f"BBB {character}开始推理{infer_queue.qsize()}")
+        try:
+            # task = model.infer_once(infer_para)  # 进行推理
+            # infer_thread = asyncio.to_thread(model.infer_once, infer_para)
+            # task = asyncio.wait_for(infer_thread, timeout=60)  # 进行推理
+            # _ = await task if blocking else asyncio.create_task(task)
+            loop = asyncio.get_event_loop()
+            task = loop.run_in_executor(thread_executor, model.infer_once, infer_para)
+            _ = task if blocking else None
+        except asyncio.TimeoutError:
+            raise RuntimeError(f"Task for {character} timed out!")
+        finally:
+            torch_gc()
+            if not infer_queue.empty():
+                try:
+                    geneface_log.info(f"CCC {character}推理结束{infer_queue.qsize()}")
+                    infer_queue.get()
+                    geneface_log.info(f"DDD {character}推理结束{infer_queue.qsize()}")
+                    infer_queue.task_done()
+                    geneface_log.info(f"Task removed from queue for model: {model_path}")
+                except Exception as e:
+                    raise RuntimeError(f"Error cleaning up queue: {e}")
+
+    video_path = final_video_path if paste == 'default' else paste_back(crop_video_path, ori_video_path,
+                                                                        final_video_path, crop_coordinates_tuple)
+    return video_path
 
 
 async def send_heartbeat(websocket):
@@ -421,20 +432,24 @@ async def send_heartbeat(websocket):
 
 
 # 初始化变量
-config_data = read_json_file('config/config.json')
-model: Optional[GeneFace2Infer] = None
 storage_model_instances: Dict[str, Optional[GeneFace2Infer]] = {}  # {model_path: Model}
-init_model_instances: Dict[str, GeneFace2Infer] = {}  # {model_path: Model}
-# inference_info: Dict[str, Dict[str, Union[str, asyncio.Queue, asyncio.Lock, GeneFace2Infer]]] = config_data["inference_info"]
-inference_info: Dict[str, Dict[str, Union[str, queue.Queue, threading.Lock, GeneFace2Infer]]] = config_data[
-    "inference_info"]
+load_model_instances: Dict[str, GeneFace2Infer] = {}  # {model_path: Model}
+infer_info: Dict[str, Dict[str, Union[str, asyncio.Queue, asyncio.Lock]]] = {}
+# infer_info: Dict[str, Dict[str, Union[str, asyncio.Queue, threading.Lock]]] = {}
+parallel = False
+# inp: Optional[Any] = None
+# inp = get_arg()
+model: Optional[GeneFace2Infer] = None
+config_data = read_json_file('config/config.json')
+model_path_dict = config_data['model_path']
+ori_video_dict = config_data['ori_video']
 base_audio_path = config_data['base_audio_path']
 base_video_path = config_data['base_video_path']
 host = config_data['host']
 port = config_data['port']
+stream_url = config_data['rtsp_url']
 secret_key = os.getenv('GENEFACE-SECRET-KEY', 'sk-geneface')
 CURRENT_CHARACTER = "li"
-parallel = False
 thread_executor = ThreadPoolExecutor(max_workers=10)  # 设置线程池大小为 20
 process_executor = ProcessPoolExecutor(max_workers=10)  # 设置线程池大小为 20
 geneface_log = logger
@@ -471,40 +486,33 @@ async def generate_video(request: VideoGenerateRequest):
     geneface_log.info(logs)
     sno = request.sno
     uid = request.uid
-    blocking = request.blocking
     paste = request.paste
+    blocking = request.blocking
     character = request.character
     audio_name = request.audio_name
     is_parallel = request.parallel or parallel
-    infer_para = get_arg(inference_info[character]['torso_ckpt'], inference_info[character]['head_ckpt'])
-    inference_info[character]['infer_queue'].put(sno)
     video_dir = os.path.join(base_video_path, str(uid))
     os.makedirs(video_dir, exist_ok=True)
     video_id = str(uuid.uuid4().hex[:8])
     audio_path = os.path.join(base_audio_path, audio_name)
-    final_video_name = f"{video_id}.mp4"
-    cropped_video_name = f"{video_id}.cropped.mp4"
-    final_video_path = os.path.join(video_dir, final_video_name)
-    crop_video_path = os.path.join(video_dir, cropped_video_name)
-    crop_video_path = final_video_path if paste == 'default' else crop_video_path
-    infer_data = {'character': character, 'blocking': blocking, 'paste': paste, "parallel": is_parallel,
-                  'torso_ckpt': inference_info[character]['torso_ckpt'],
-                  'head_ckpt': inference_info[character]['head_ckpt'],
-                  'drv_audio': audio_path, 'out_name': crop_video_path, 'final_video_path': final_video_path}
-    infer_para.update(infer_data)
     phase = 0
     try:
         if not os.path.exists(audio_path):
             msg = f'The audio file does not exist:{audio_path}!'
             raise FileNotFoundError(msg)
-
-        _ = await refresh_models(infer_para) if is_parallel is None else await get_models(infer_para, is_parallel)
+        _ = await refresh_models(character=character) if is_parallel is None else await get_models(character,
+                                                                                                   is_parallel)
+        infer_data = {"uid": uid, "character": character, "paste": paste, "audio_path": audio_path,
+                      "video_dir": video_dir, "video_id": video_id}
         # 如果需要阻塞以同步运行, 使用 asyncio.to_thread 使用线程异步运行同步推理函数, await等待完成
         # task = asyncio.wait_for(asyncio.to_thread(run_inference_sync, infer_data, blocking), timeout=300)
+        # task = asyncio.sleep(10)
+        # task = asyncio.wait_for(asyncio.to_thread(run_inference_sync, infer_data), timeout=30)
         # task = asyncio.wait_for(run_inference_async(infer_data), timeout=30)
+        # # 放入线程运行
         # infer_thread = threading.Thread(target=run_inference_sync, args=(infer_data,))
         # infer_thread.start()
-        _ = await run_inference_async(infer_para)
+        _ = await run_inference_async(infer_data, blocking)
         code = 0
         (phase, msg) = (2, "infer successful!") if blocking else (1, "infer starting...")
         video_data = [VideoData(video_dir=video_dir, video_name=f'{video_id}.mp4')]
@@ -595,7 +603,7 @@ async def websocket_endpoint(websocket: WebSocket):
     geneface_log.info(connect_msg)
     # 接受连接
     await websocket.accept()
-    global CURRENT_CHARACTER
+    global CURRENT_CHARACTER, infer_info
     try:
         while True:
             phase = 0
@@ -607,34 +615,24 @@ async def websocket_endpoint(websocket: WebSocket):
                 geneface_log.info(logs)
                 sno = request.sno
                 uid = request.uid
-                blocking = request.blocking
                 paste = request.paste
                 character = request.character
                 audio_name = request.audio_name
                 is_parallel = request.parallel or parallel
-                infer_para = get_arg(inference_info[character]['torso_ckpt'], inference_info[character]['head_ckpt'])
-                inference_info[character]['infer_queue'].put(sno)
                 video_dir = os.path.join(base_video_path, str(uid))
                 os.makedirs(video_dir, exist_ok=True)
                 video_id = str(uuid.uuid4().hex[:8])
                 audio_path = os.path.join(base_audio_path, audio_name)
-                final_video_name = f"{video_id}.mp4"
-                cropped_video_name = f"{video_id}.cropped.mp4"
-                final_video_path = os.path.join(video_dir, final_video_name)
-                crop_video_path = os.path.join(video_dir, cropped_video_name)
-                crop_video_path = final_video_path if paste == 'default' else crop_video_path
-                infer_data = {'character': character, 'blocking': blocking, 'paste': paste,
-                              'torso_ckpt': inference_info[character]['torso_ckpt'],
-                              'head_ckpt': inference_info[character]['head_ckpt'],
-                              'drv_audio': audio_path, 'out_name': crop_video_path,
-                              'final_video_path': final_video_path}
-                infer_para.update(infer_data)
                 if not os.path.exists(audio_path):
                     msg = f'The audio file does not exist:{audio_path}!'
                     raise FileNotFoundError(msg)
+                    # 刷新或加载模型
 
-                # 刷新或加载模型
-                _ = await refresh_models(infer_para) if is_parallel is None else await get_models(infer_para, is_parallel)
+                if is_parallel is None:
+                    await refresh_models(character=character)
+                else:
+                    await get_models(character, is_parallel)
+
                 # 返回推理开始的消息
                 msg = "Inference starting..."
                 code = 0
@@ -652,7 +650,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # 使用 asyncio.to_thread 调用推理函数
                 # await asyncio.wait_for(run_inference_async(infer_data), timeout=30)
                 # await asyncio.wait_for(asyncio.to_thread(run_inference_sync, infer_data), timeout=30)
-                _ = await run_inference_async(infer_para)
+                await run_inference_async(infer_data)
                 msg = "Inference success"
                 code = 0
                 phase = 2

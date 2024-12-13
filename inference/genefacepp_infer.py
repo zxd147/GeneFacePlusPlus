@@ -126,7 +126,7 @@ def inject_blink_to_lm68(lm68, opened_eye_area_percent=0.6, closed_eye_area_perc
 
 
 class GeneFace2Infer:
-    def __init__(self, audio2secc_dir, postnet_dir, head_model_dir, torso_model_dir, device=None):
+    def __init__(self, torso_model_dir='', head_model_dir='', audio2secc_dir='checkpoints/audio2motion_vae', postnet_dir='', device=None):
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         # self.device = device
@@ -609,7 +609,7 @@ class GeneFace2Infer:
         print(f"Extracted wav file (16khz) from {audio_name} to {wav16k_name}.")
 
 
-def get_arg(head_ckpt=None, torso_ckpt=None):
+def get_arg(torso_ckpt=None, head_ckpt=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--a2m_ckpt",
                         default='checkpoints/audio2motion_vae')  # checkpoints/0727_audio2secc/audio2secc_withlm2d100_randomframe
