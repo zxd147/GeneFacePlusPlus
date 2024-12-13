@@ -7,7 +7,7 @@ from aiohttp import client_exceptions
 
 
 async def send_request(character: str, audio_name: str):
-    url = 'http://192.168.0.246:8042/v1/video/generate'
+    url = 'http://192.168.0.246:8041/v1/video/generate'
     headers = {
         'User-Agent': 'Apifox/1.0.0 (https://apifox.com)',
         'Content-Type': 'application/json',
@@ -39,12 +39,12 @@ async def send_request(character: str, audio_name: str):
 # 定义异步主函数来并发发送请求，并在请求之间添加延迟
 async def main():
     characters_and_audio = [
-        ("huang", "1725247845.wav"),
-        ("huang", "1725247845.wav"),
-        ("li", "1fa520b4.wav"),
-        ("li", "1fa520b4.wav"),
-        ("yu", "9563f766.wav"),
-        ("yu", "9563f766.wav"),
+        # ("huang", "1725247845.wav"),
+        # ("huang", "1725247845.wav"),
+        # ("li", "1fa520b4.wav"),
+        # ("li", "1fa520b4.wav"),
+        # ("yu", "9563f766.wav"),
+        # ("yu", "9563f766.wav"),
         ("huang", "1725334411.wav"),
         ("li", "9962ae7d.wav"),
         ("yu", "adbbfc2c.wav"),

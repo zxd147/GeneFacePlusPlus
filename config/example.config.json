@@ -3,9 +3,18 @@
     "workspace":"/home/zxd/code/Vision/GeneFacePlusPlus",
 
     "model_path": {
-        "huang": "checkpoints/motion2video_nerf/huang_torso",
-        "li": "checkpoints/motion2video_nerf/li_torso",
-        "yu": "checkpoints/motion2video_nerf/yu_torso"
+        "huang": {
+            "head_ckpt": "",
+            "torso_ckpt": "checkpoints/motion2video_nerf/huang_torso"
+        },
+        "li": {
+            "head_ckpt": "",
+            "torso_ckpt": "checkpoints/motion2video_nerf/li_torso"
+        },
+        "yu": {
+            "head_ckpt": "",
+            "torso_ckpt": "checkpoints/motion2video_nerf/yu_torso"
+        }
     },
     "ori_video": {
          "huang": {
@@ -36,6 +45,4 @@
     "rtsp_url":"rtsp://8.134.192.173:30888/mystream",
     "access_key":"5HyhBREWaKJ6Vs2yI48V",
     "secret_key":"Iym5NBTFr7DFEuVZdZpP13noE4TDt9Kiaa3ksq0c"
-
-
 }
