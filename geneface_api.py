@@ -301,8 +301,8 @@ async def set_model_to_device(character_name, model_path, model_instance, device
                 msg = f'Model "{Path(model_path).name}" is busy. Waiting for the current task to finish.'
                 geneface_log.info(msg)
                 # infer_queue.join()  # 等待队列完成当前任务
-                _ = await asyncio.to_thread(infer_queue.join)  # 阻塞导致卡死, 等待队列完成当前任务
-            # _ = asyncio.wait_for(asyncio.to_thread(to_device), timeout=30)
+                _ = await asyncio.to_thread(infer_queue.join)  # 放到异步线程等待队列完成当前任务
+            # _ = asyncio.wait_for(asyncio.to_thread(to_device), timeout=30)  # 同步会导致阻塞卡死
             _ = asyncio.to_thread(to_device)
         else:
             to_device()
