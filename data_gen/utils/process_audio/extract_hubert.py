@@ -5,8 +5,6 @@ import soundfile as sf
 import numpy as np
 import torch
 import os
-
-sys.path.append('/home/zxd/code/Vision/GeneFacePlusPlus')
 from utils.commons.hparams import set_hparams, hparams
 
 wav2vec2_processor = None
@@ -95,7 +93,7 @@ if __name__ == '__main__':
     person_id = args.video_id
     wav_16k_name = f"data/processed/videos/{person_id}/aud.wav"
     hubert_npy_name = f"data/processed/videos/{person_id}/aud_hubert.npy"
-    speech_16k, _ = sf.read(wav_16k_name)
-    hubert_hidden = get_hubert_from_16k_speech(speech_16k)
+    speech_16k_np, _ = sf.read(wav_16k_name)
+    hubert_hidden = get_hubert_from_16k_speech(speech_16k_np)
     np.save(hubert_npy_name, hubert_hidden.detach().numpy())
     print(f"Saved at {hubert_npy_name}")

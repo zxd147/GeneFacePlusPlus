@@ -8,7 +8,59 @@ import argparse
 import numpy as np
 
 
-def crop(input_video, to_crop_size=720):
+def crop_out_direct(input_video, to_crop_size=720):
+    # 初始化dlib的人脸检测器
+    face_detector = dlib.get_frontal_face_detector()
+    # 读取视频
+    video_capture = cv2.VideoCapture(input_video)
+    # 获取第一帧
+    ret, first_frame = video_capture.read()
+    if not ret:
+        print("Failed to read the first frame.")
+        video_capture.release()
+        exit(1)
+    # 获取人脸坐标
+    face_coords = get_face_coordinates(face_detector, first_frame, None)
+    if not face_coords:
+        print("No face detected.")
+        video_capture.release()
+        exit(1)
+
+    center_x, center_y = face_coords
+    # landmarks = [center_x, center_y]
+    # 计算裁剪区域的起始点
+    start_x = center_x - (to_crop_size + 1) // 2
+    start_y = center_y - (to_crop_size + 1) // 2
+
+    # 确保裁剪区域不会超出视频边界
+    video_width = int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    video_height = int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    # 限制裁剪区域的起始点，防止超出边界
+    start_x = max(0, min(start_x, video_width - to_crop_size))
+    start_y = max(0, min(start_y, video_height - to_crop_size))
+
+    # 生成输出路径
+    output_video = input_video.replace('_ori', '_crop')
+
+    # 构造 FFmpeg 命令进行裁剪
+    ffmpeg_command = [
+        'ffmpeg',
+        '-i', input_video,
+        '-vf', f"crop={to_crop_size}:{to_crop_size}:{start_x}:{start_y}",
+        '-qmin', '1',
+        '-q:v', '1',
+        '-y', output_video
+    ]
+
+    # 执行 FFmpeg 命令
+    subprocess.run(ffmpeg_command)
+    # 释放视频资源
+    video_capture.release()
+    print(f"Video cropped and saved to {output_video}")
+    return output_video
+
+
+def crop_out(input_video, to_crop_size=720):
     target_size = 512
     target_fps = 25
     width, height = get_video_resolution(input_video)
@@ -40,30 +92,6 @@ def crop(input_video, to_crop_size=720):
     face_detector = dlib.get_frontal_face_detector()
     resize_video(input_video, resized_path, target_fps, resize_width, resize_height)
     video_capture = cv2.VideoCapture(resized_path)
-
-    diy_number = 1  # 起始帧号
-    target_frame = 10  # 假设我们需要提取第 10 帧的人脸（可以根据需要修改）
-
-    # while video_capture.isOpened():
-    #     ret, frame = video_capture.read()
-    #     # 如果帧读取失败，则退出
-    #     if not ret:
-    #         print("Failed to grab frame. Exiting...")
-    #         break
-    #
-    #     # 如果当前帧是目标帧
-    #     if diy_number == target_frame:
-    #         print(f"Processing frame {diy_number}, size: {frame.shape}")
-    #         # 检测当前帧的人脸
-    #         face_coords = get_face_coordinates(face_detector, frame, first_frame_face_path)
-    #         if face_coords is not None:
-    #             center_x, center_y = face_coords
-    #             print(f"Center coordinates of the frame {diy_number} detected face:", center_x, center_y)
-    #         else:
-    #             print(f"No face detected in the {diy_number} frame, will exit.")
-    #             exit(1)
-    #     # 增加帧号，处理下一帧
-    #     diy_number += 1
 
     # 获取第一帧的人脸坐标
     ret, first_frame = video_capture.read()
@@ -161,8 +189,9 @@ def get_face_coordinates(face_detector, image, first_frame_face_path):
         # 裁剪图像
         print(f'image[{face_y1}:{face_y2}, {face_x1}:{face_x2}]')
         crop_face = image[face_y1:face_y2, face_x1:face_x2]
-        # 保存裁剪后的人脸图像
-        cv2.imwrite(first_frame_face_path, crop_face)
+        if first_frame_face_path:
+            # 保存裁剪后的人脸图像
+            cv2.imwrite(first_frame_face_path, crop_face)
         # 计算并返回人脸中心点
         face_x = (face_x1 + face_x2) // 2
         face_y = (face_y1 + face_y2) // 2
@@ -245,10 +274,10 @@ def crop_compose_video(resized_path, final_path, target_size, center_x, center_y
 
 if __name__ == "__main__":
     args = parser = argparse.ArgumentParser()
-    default_video = '/home/zxd/code/Vision/GeneFacePlusPlus/data/raw/videos/yu/yu_ori.mp4'
+    default_video = '/home/zxd/code/Vision/GeneFacePlusPlus/data/raw/videos/gu_ori.mp4'
     parser.add_argument('--input', type=str, default=default_video)
     opt = parser.parse_args()
     input_path = opt.input
-    crop_size = 600
-    crop(input_path, to_crop_size=crop_size)
-
+    crop_size = 900
+    # crop_out(input_path, to_crop_size=crop_size)
+    crop_out_direct(input_path, to_crop_size=crop_size)
