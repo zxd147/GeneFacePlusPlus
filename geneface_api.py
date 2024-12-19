@@ -133,14 +133,14 @@ async def lifespan(geneface_app: FastAPI):
         geneface_log.info("启动中...")
         # 初始化系统
         # llm_config, embedder_config = get_config(new_llm_model=None)
-        infer_para = get_arg()
-        infer_para['character'] = CURRENT_CHARACTER
-        infer_para['torso_ckpt'] = inference_info[CURRENT_CHARACTER]['torso_ckpt']
-        infer_para['head_ckpt'] = inference_info[CURRENT_CHARACTER]['head_ckpt']
+        load_para = get_arg()
+        load_para['character'] = CURRENT_CHARACTER
+        load_para['torso_ckpt'] = inference_info[CURRENT_CHARACTER]['torso_ckpt']
+        load_para['head_ckpt'] = inference_info[CURRENT_CHARACTER]['head_ckpt']
         if parallel is None:
-            await refresh_models(infer_para, parallel)
+            await refresh_models(load_para, parallel)
         else:
-            await get_models(infer_para, parallel)
+            await get_models(load_para, parallel)
         # 让应用继续运行
         yield
     except Exception as e:
@@ -159,9 +159,9 @@ async def init_app():
     geneface_log.info(log)
 
 
-async def refresh_models(infer_para, is_parallel=None, infer_device=None):
+async def refresh_models(load_para, is_parallel=None, infer_device=None):
     global CURRENT_CHARACTER, model  # 声明这些变量是全局变量
-    character = infer_para['character']
+    character = load_para['character']
     if is_parallel is None:
         infer_device = infer_device or ('cuda' if torch.cuda.is_available() else 'cpu')
         if character in inference_info and (not character == CURRENT_CHARACTER or not model):
@@ -170,7 +170,7 @@ async def refresh_models(infer_para, is_parallel=None, infer_device=None):
                 inference_info[character]['queue_lock'] = threading.Lock()
                 inference_info[character]['target_device'] = infer_device
             geneface_log.info(f"检测到模型发生变化，正在重新初始化为：{character}")
-            model = await load_model(infer_para)
+            model = await load_model(load_para)
             torch_gc()
             CURRENT_CHARACTER = character
             geneface_log.info("模型初始化完成")
@@ -178,7 +178,7 @@ async def refresh_models(infer_para, is_parallel=None, infer_device=None):
 
 
 async def get_models(infer_para, is_parallel, infer_device=None, storage_device=None, init_device=None):
-    character = infer_para['character']
+    new_character = infer_para['character']
     new_model_path = infer_para['torso_ckpt'] or infer_para['head_ckpt']
     if is_parallel is not None:
         global CURRENT_CHARACTER, init_model_instances, storage_model_instances
@@ -189,25 +189,28 @@ async def get_models(infer_para, is_parallel, infer_device=None, storage_device=
         # 设置加载设备，如果未提供则默认使用 'cpu'
         init_device = init_device or 'cpu'
         # 确保 character 是有效值
-        if character not in inference_info:
-            raise ValueError(f"Character '{character}' not found in inference_info keys.")
+        if new_character not in inference_info:
+            raise ValueError(f"New Character '{new_character}' not found in inference_info keys.")
         if not storage_model_instances:
             geneface_log.info("检测到未存储模型, 开始加载...")
             # 遍历 model_path_dict 中的所有模型路径, 根据模型名称选择设备和存储实例
             for character_name, character_info in inference_info.items():
-                model_path = character_info['torso_ckpt'] or infer_para['head_ckpt']
+                load_para = get_arg()
+                load_para['character'] = character_name
+                load_para['torso_ckpt'] = character_info['torso_ckpt']
+                load_para['head_ckpt'] = character_info['head_ckpt']
+                model_path = load_para['torso_ckpt'] or load_para['head_ckpt']
                 storage_model_instances[model_path] = None
                 load_device, target_dict = (
                     (init_device, init_model_instances)
-                    if character_name != character
+                    if character_name != new_character
                     else (infer_device, storage_model_instances)
                 )
                 character_info['infer_queue'] = queue.Queue(maxsize=10)
                 character_info['queue_lock'] = threading.Lock()
                 character_info['target_device'] = load_device
-                geneface_log.info(f"正在加载推理模型{character_name}到{load_device}...")
                 # 加载模型
-                await load_model(infer_para, load_device, target_dict)
+                await load_model(load_para, load_device, target_dict)
 
             # 计算模型总数
             # total_models = len(storage_model_instances) + len(init_model_instances)
@@ -215,14 +218,14 @@ async def get_models(infer_para, is_parallel, infer_device=None, storage_device=
             storage_models_count = sum(1 for v in storage_model_instances.values() if v is not None)
             total_models_count = load_models_count + storage_models_count
             # 打印成功加载的模型个数
-            geneface_log.info(f"成功加载模型个数: {total_models_count}个, 当前使用的模型为{character}.")
-            inference_info[character]['model'] = storage_model_instances[new_model_path]
+            geneface_log.info(f"成功加载模型个数: {total_models_count}个, 当前使用的模型为{new_character}.")
+            inference_info[new_character]['model'] = storage_model_instances[new_model_path]
             torch_gc()
-            CURRENT_CHARACTER = character
-            result = {"status": "success", "message": "models loaded", "character": character, "device": infer_device}
+            CURRENT_CHARACTER = new_character
+            result = {"status": "success", "message": "models loaded", "character": new_character, "device": infer_device}
             geneface_log.debug(result)
-        elif not character == CURRENT_CHARACTER:
-            geneface_log.info(f"检测到模型发生变化，正在重新初始化推理模型{character}到设备{infer_device}...")
+        elif not new_character == CURRENT_CHARACTER:
+            geneface_log.info(f"检测到模型发生变化，正在重新初始化推理模型{new_character}到设备{infer_device}...")
             if new_model_path in init_model_instances:
                 geneface_log.info(
                     f"正在将推理模型{Path(new_model_path).name}, 从 storage_model_instances 移动到 init_model_instances ...")
@@ -231,11 +234,11 @@ async def get_models(infer_para, is_parallel, infer_device=None, storage_device=
             set_tasks = []
             # for model_path, model_instance in storage_model_instances.items():
             for character_name, character_info in inference_info.items():
-                model_path = character_info['torso_ckpt'] or infer_para['head_ckpt']
+                model_path = character_info['torso_ckpt'] or character_info['head_ckpt']
                 model_instance = storage_model_instances[model_path]
-                if character_name == character or is_parallel or model_instance is None:
+                if character_name == new_character or is_parallel or model_instance is None:
                     continue
-                inference_info[character]["target_device"] = storage_device
+                inference_info[new_character]["target_device"] = storage_device
                 geneface_log.info(f"等待移动推理模型{Path(model_path).name}到{storage_device}...")
                 task = set_model_to_device(character_name, model_path, model_instance, storage_device, thread=True)
                 set_tasks.append(asyncio.wait_for(task, timeout=60))
@@ -243,30 +246,33 @@ async def get_models(infer_para, is_parallel, infer_device=None, storage_device=
                 # _ = asyncio.to_thread(set_model_to_device, model_path, model_instance, storage_device, thread=True)
                 # loop = asyncio.get_event_loop()
                 # asyncio.run_coroutine_threadsafe(set_model_to_device(model_path, model_instance, storage_device, wait=True), loop)
-            _ = await asyncio.gather(*set_tasks)
+            _ = asyncio.gather(*set_tasks)
             geneface_log.info(f"正在移动推理模型{Path(new_model_path).name}到{infer_device}...")
-            inference_info[new_model_path]["target_device"] = infer_device
-            inference_info[character]['model'] = storage_model_instances[new_model_path]
-            await set_model_to_device(character, new_model_path, storage_model_instances[new_model_path], infer_device)
+            inference_info[new_character]["target_device"] = infer_device
+            inference_info[new_character]['model'] = storage_model_instances[new_model_path]
+            await set_model_to_device(new_character, new_model_path, storage_model_instances[new_model_path], infer_device)
             torch_gc()  # 垃圾回收
-            CURRENT_CHARACTER = character
-            result = {"status": "success", "message": "change model", "character": character, "device": infer_device}
+            CURRENT_CHARACTER = new_character
+            result = {"status": "success", "message": "change model", "character": new_character, "device": infer_device}
             geneface_log.debug(result)
         else:
-            result = {"status": "success", "message": "no changes", "character": character, "device": infer_device}
+            result = {"status": "success", "message": "no changes", "character": new_character, "device": infer_device}
             geneface_log.debug(result)
         return result
 
 
-async def load_model(infer_para, load_device=None, target_dict=None):
+async def load_model(load_para, load_device=None, target_dict=None):
     """加载或更新模型，移动到指定设备，并放入目标字典"""
-    model_instance = GeneFace2Infer(torso_model_dir=infer_para['torso_ckpt'], head_model_dir=infer_para['head_ckpt'],
+    model_instance = GeneFace2Infer(torso_model_dir=load_para['torso_ckpt'], head_model_dir=load_para['head_ckpt'],
                                     device=load_device)
-    model_path = infer_para['torso_ckpt'] or infer_para['head_ckpt']
+    model_path = load_para['torso_ckpt'] or load_para['head_ckpt']
+    geneface_log.info(f"正在加载推理模型{Path(model_path).name}到{load_device}...")
+
     # 提前返回：如果没有传入 target_dict，则直接返回实例
     if target_dict is None:
         return model_instance
     target_dict[model_path] = model_instance
+    return target_dict
 
 
 async def set_model_to_device(character_name, model_path, model_instance, device_instance, thread=False):
@@ -276,7 +282,11 @@ async def set_model_to_device(character_name, model_path, model_instance, device
         # 遍历每个模型组件并移动到目标设备，且设置为eval模式
         for sub_model in sub_models:
             if sub_model:  # 确保模型存在
+                geneface_log.debug(
+                    f"-------开始移动-------{model_path}, {infer_queue.qsize()}, {device_instance}, {thread}-------开始移动-------")
                 sub_model.to(target_device).eval()
+                geneface_log.debug(
+                    f"=======移动完成======={model_path}, {infer_queue.qsize()}, {device_instance}, {thread}=======移动完成=======")
                 torch_gc()
 
     infer_queue = inference_info[character_name].get("infer_queue")
@@ -284,19 +294,18 @@ async def set_model_to_device(character_name, model_path, model_instance, device
     # 定义所有模型组件的列表
     sub_models = [model_instance.audio2secc_model, model_instance.secc2video_model, model_instance.postnet_model]
     if model_instance.audio2secc_model.device != target_device:
+        geneface_log.debug(
+            f"=======准备移动======={model_path}, {infer_queue.qsize()}, {device_instance}, {thread}-------开始移动-------")
         if thread:
             if not infer_queue.empty():  # 如果队列不为空，说明有任务正在进行
                 msg = f'Model "{Path(model_path).name}" is busy. Waiting for the current task to finish.'
                 geneface_log.info(msg)
-                infer_queue.join()  # 等待队列完成当前任务
+                # infer_queue.join()  # 等待队列完成当前任务
+                _ = await asyncio.to_thread(infer_queue.join)  # 阻塞导致卡死, 等待队列完成当前任务
             # _ = asyncio.wait_for(asyncio.to_thread(to_device), timeout=30)
             _ = asyncio.to_thread(to_device)
         else:
-            geneface_log.debug(
-                f"-------开始移动-------{model_path}, {infer_queue.qsize()}, {device_instance}, {thread}-------开始移动-------")
             to_device()
-            geneface_log.debug(
-                f"=======移动完成======={model_path}, {infer_queue.qsize()}, {device_instance}, {thread}=======移动完成=======")
     else:
         geneface_log.info(
             f"模型{Path(model_path).name}已在目标设备, 无需移动")
@@ -337,16 +346,16 @@ def infer_in_executor(infer_para):
         geneface_log.debug(f"AAA {character}开始推理{infer_queue.qsize()}, {infer_lock}")
         geneface_log.debug(f"BBB {character}开始推理{infer_queue.qsize()}")
         try:
-            # # 使用 ThreadPoolExecutor 执行推理任务
-            # future = thread_executor.submit(inference_task)
-            # future.result(timeout=timeout)  # 设置超时时间
-            with torch.no_grad():
-                geneface_log.debug(f"进入推理{infer_para['out_name']}")
-                model.infer_once(infer_para) if is_parallel is None else inference_info[character]['model'].infer_once(infer_para)
-        except concurrent.futures.TimeoutError as te:
-            raise RuntimeError(f"{te}: Task for {character} timed out after {timeout} seconds!")
-        except Exception as e:
-            raise RuntimeError(f"Error during inference: {e}")
+            # 使用 ThreadPoolExecutor 执行推理任务
+            future = thread_executor.submit(inference_task)
+            future.result(timeout=timeout)  # 设置超时时间
+            # with torch.no_grad():
+            #     geneface_log.debug(f"进入推理{infer_para['out_name']}")
+            #     model.infer_once(infer_para) if is_parallel is None else inference_info[character]['model'].infer_once(infer_para)
+        # except concurrent.futures.TimeoutError as te:
+        #     raise RuntimeError(f"{te}: Task for {character} timed out after {timeout} seconds!")
+        # except Exception as e:
+        #     raise RuntimeError(f"Error during inference: {e}")
         finally:
             torch_gc()
             if not infer_queue.empty():
@@ -377,8 +386,8 @@ def infer_in_executor(infer_para):
 #     infer_para['out_name'] = final_video_path if paste == 'default' else crop_video_path
 #     # 队列逻辑确保只有一个任务进行
 #     model_path = inference_info[character]['torso_ckpt']
-#     infer_queue = inference_info[model_path].get("queue", queue.Queue)
-#     infer_lock = inference_info[model_path].get("lock", threading.Lock())
+#     infer_queue = inference_info[character].get("queue", queue.Queue)
+#     infer_lock = inference_info[character].get("lock", threading.Lock())
 #     # queue.join()  # 等待队列完成当前任务
 #     with infer_lock:  # 保证队列操作线程安全
 #         if not infer_queue.empty():  # 如果队列不为空，说明已有任务在进行

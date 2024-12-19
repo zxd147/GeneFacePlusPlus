@@ -336,7 +336,7 @@ class GeneFace2Infer:
     @torch.no_grad()
     def forward_audio2secc(self, batch, inp=None):
         # forward the audio-to-motion
-        ret, pred = self.audio2secc_model.forward(batch, ret={}, train=False, temperature=inp['temperature'])
+        pred, ret = self.audio2secc_model.forward(batch, ret={}, train=False, temperature=inp['temperature'])
         if pred.shape[-1] == 144:
             identity = ret['pred'][0][:, :80]
             exp = ret['pred'][0][:, 80:]
