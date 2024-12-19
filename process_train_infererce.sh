@@ -10,7 +10,7 @@ VIDEO_ID=$1
 # 输出开始处理的消息
 echo "Start Process $VIDEO_ID"
 # 执行 process.sh
-#bash process.sh $VIDEO_ID
+bash process.sh $VIDEO_ID
 echo "Process done!"
 
 # 输出开始训练的消息

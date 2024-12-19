@@ -451,7 +451,7 @@ class PitchContourVAEModel(nn.Module):
             ret['pred'] = x_recon
             ret['mask'] = mask
 
-            return x_recon
+            return x_recon, ret
 
 
 if __name__ == '__main__':

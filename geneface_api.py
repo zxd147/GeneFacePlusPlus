@@ -237,7 +237,7 @@ async def get_models(infer_para, is_parallel, infer_device=None, storage_device=
                     continue
                 inference_info[character]["target_device"] = storage_device
                 geneface_log.info(f"等待移动推理模型{Path(model_path).name}到{storage_device}...")
-                # task = set_model_to_device(character_name, model_path, model_instance, storage_device, thread=True)
+                task = set_model_to_device(character_name, model_path, model_instance, storage_device, thread=True)
                 set_tasks.append(asyncio.wait_for(task, timeout=60))
                 # _ = asyncio.create_task(set_model_to_device(model_path, model_instance, storage_device, thread=True))
                 # _ = asyncio.to_thread(set_model_to_device, model_path, model_instance, storage_device, thread=True)
@@ -329,6 +329,7 @@ def infer_in_executor(infer_para):
 
     def inference_task():
         with torch.no_grad():
+            geneface_log.debug(f"进入推理{infer_para['out_name']}")
             model.infer_once(infer_para) if is_parallel is None else inference_info[character]['model'].infer_once(infer_para)
 
     # with infer_lock:  # 保证队列操作线程安全
@@ -336,10 +337,12 @@ def infer_in_executor(infer_para):
         geneface_log.debug(f"AAA {character}开始推理{infer_queue.qsize()}, {infer_lock}")
         geneface_log.debug(f"BBB {character}开始推理{infer_queue.qsize()}")
         try:
-            # 使用 ThreadPoolExecutor 执行推理任务
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(inference_task)
-                future.result(timeout=timeout)  # 设置超时时间
+            # # 使用 ThreadPoolExecutor 执行推理任务
+            # future = thread_executor.submit(inference_task)
+            # future.result(timeout=timeout)  # 设置超时时间
+            with torch.no_grad():
+                geneface_log.debug(f"进入推理{infer_para['out_name']}")
+                model.infer_once(infer_para) if is_parallel is None else inference_info[character]['model'].infer_once(infer_para)
         except concurrent.futures.TimeoutError as te:
             raise RuntimeError(f"{te}: Task for {character} timed out after {timeout} seconds!")
         except Exception as e:

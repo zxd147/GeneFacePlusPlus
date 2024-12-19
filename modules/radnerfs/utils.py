@@ -20,7 +20,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Function
-from torch.cuda.amp import custom_bwd, custom_fwd 
+from torch.cuda.amp import custom_bwd, custom_fwd
 import torch.distributed as dist
 from torch.utils.data import Dataset, DataLoader
 
@@ -35,7 +35,7 @@ import lpips
 
 class _trunc_exp(Function):
     @staticmethod
-    @custom_fwd(cast_inputs=torch.float32) # cast to float32
+    @custom_fwd(cast_inputs=torch.float32)  # cast to float32
     def forward(ctx, x):
         ctx.save_for_backward(x)
         return torch.exp(x)
@@ -45,6 +45,7 @@ class _trunc_exp(Function):
     def backward(ctx, g):
         x = ctx.saved_tensors[0]
         return g * torch.exp(x.clamp(-15, 15))
+
 
 trunc_exp = _trunc_exp.apply
 
@@ -81,11 +82,12 @@ def get_audio_features(features, att_mode, index):
         auds = features[left:index]
         if pad_left > 0:
             # pad may be longer than auds, so do not use zeros_like
-            auds = torch.cat([torch.zeros(pad_left, *auds.shape[1:], device=auds.device, dtype=auds.dtype), auds], dim=0)
+            auds = torch.cat([torch.zeros(pad_left, *auds.shape[1:], device=auds.device, dtype=auds.dtype), auds],
+                             dim=0)
         return auds
     elif att_mode == 2:
-        left = index - hparams['smo_win_size']//2
-        right = index + (hparams['smo_win_size']-hparams['smo_win_size']//2)
+        left = index - hparams['smo_win_size'] // 2
+        right = index + (hparams['smo_win_size'] - hparams['smo_win_size'] // 2)
         pad_left = 0
         pad_right = 0
         if left < 0:
@@ -98,7 +100,7 @@ def get_audio_features(features, att_mode, index):
         if pad_left > 0:
             auds = torch.cat([torch.zeros_like(auds[:pad_left]), auds], dim=0)
         if pad_right > 0:
-            auds = torch.cat([auds, torch.zeros_like(auds[:pad_right])], dim=0) # [8, 16]
+            auds = torch.cat([auds, torch.zeros_like(auds[:pad_right])], dim=0)  # [8, 16]
         return auds
     else:
         raise NotImplementedError(f'wrong att_mode: {att_mode}')
@@ -116,7 +118,7 @@ def srgb_to_linear(x):
 
 # copied from pytorch3d
 def _angle_from_tan(
-    axis: str, other_axis: str, data, horizontal: bool, tait_bryan: bool
+        axis: str, other_axis: str, data, horizontal: bool, tait_bryan: bool
 ) -> torch.Tensor:
     """
     Extract the first or third Euler angle from the two members of
@@ -200,7 +202,6 @@ def matrix_to_euler_angles(matrix: torch.Tensor, convention: str = 'XYZ') -> tor
     return torch.stack(o, -1)
 
 
-
 def _axis_angle_rotation(axis: str, angle: torch.Tensor) -> torch.Tensor:
     """
     Return the rotation matrices for one of the rotations about an axis
@@ -229,8 +230,7 @@ def _axis_angle_rotation(axis: str, angle: torch.Tensor) -> torch.Tensor:
     return torch.stack(R_flat, -1).reshape(angle.shape + (3, 3))
 
 
-
-def euler_angles_to_matrix(euler_angles: torch.Tensor, convention: str='XYZ') -> torch.Tensor:
+def euler_angles_to_matrix(euler_angles: torch.Tensor, convention: str = 'XYZ') -> torch.Tensor:
     """
     Convert rotations given as Euler angles in radians to rotation matrices.
     Args:
@@ -256,9 +256,8 @@ def euler_angles_to_matrix(euler_angles: torch.Tensor, convention: str='XYZ') ->
         _axis_angle_rotation(c, e)
         for c, e in zip(convention, torch.unbind(euler_angles, -1))
     ]
-    
-    return torch.matmul(torch.matmul(matrices[0], matrices[1]), matrices[2])
 
+    return torch.matmul(torch.matmul(matrices[0], matrices[1]), matrices[2])
 
 
 def convert_poses(poses):
@@ -270,14 +269,12 @@ def convert_poses(poses):
     return out
 
 
-
 def get_bg_coords(H, W, device):
-    X = torch.arange(H, device=device) / (H - 1) * 2 - 1 # in [-1, 1]
-    Y = torch.arange(W, device=device) / (W - 1) * 2 - 1 # in [-1, 1]
+    X = torch.arange(H, device=device) / (H - 1) * 2 - 1  # in [-1, 1]
+    Y = torch.arange(W, device=device) / (W - 1) * 2 - 1  # in [-1, 1]
     xs, ys = custom_meshgrid(X, Y)
-    bg_coords = torch.cat([xs.reshape(-1, 1), ys.reshape(-1, 1)], dim=-1).unsqueeze(0) # [1, H*W, 2], in [-1, 1]
+    bg_coords = torch.cat([xs.reshape(-1, 1), ys.reshape(-1, 1)], dim=-1).unsqueeze(0)  # [1, H*W, 2], in [-1, 1]
     return bg_coords
-
 
 
 def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
@@ -299,14 +296,15 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
         xmin, xmax, ymin, ymax = rect
         N = (xmax - xmin) * (ymax - ymin)
 
-    i, j = custom_meshgrid(torch.linspace(0, W-1, W, device=device), torch.linspace(0, H-1, H, device=device)) # float
-    i = i.t().reshape([1, H*W]).expand([B, H*W]) + 0.5
-    j = j.t().reshape([1, H*W]).expand([B, H*W]) + 0.5
+    i, j = custom_meshgrid(torch.linspace(0, W - 1, W, device=device),
+                           torch.linspace(0, H - 1, H, device=device))  # float
+    i = i.t().reshape([1, H * W]).expand([B, H * W]) + 0.5
+    j = j.t().reshape([1, H * W]).expand([B, H * W]) + 0.5
 
     results = {}
 
     if N > 0:
-        N = min(N, H*W)
+        N = min(N, H * W)
 
         if patch_size > 1:
 
@@ -315,36 +313,36 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
             num_patch = N // (patch_size ** 2)
             inds_x = torch.randint(0, H - patch_size, size=[num_patch], device=device)
             inds_y = torch.randint(0, W - patch_size, size=[num_patch], device=device)
-            inds = torch.stack([inds_x, inds_y], dim=-1) # [np, 2]
+            inds = torch.stack([inds_x, inds_y], dim=-1)  # [np, 2]
 
             # create meshgrid for each patch
             pi, pj = custom_meshgrid(torch.arange(patch_size, device=device), torch.arange(patch_size, device=device))
-            offsets = torch.stack([pi.reshape(-1), pj.reshape(-1)], dim=-1) # [p^2, 2]
+            offsets = torch.stack([pi.reshape(-1), pj.reshape(-1)], dim=-1)  # [p^2, 2]
 
-            inds = inds.unsqueeze(1) + offsets.unsqueeze(0) # [np, p^2, 2]
-            inds = inds.view(-1, 2) # [N, 2]
-            inds = inds[:, 0] * W + inds[:, 1] # [N], flatten
+            inds = inds.unsqueeze(1) + offsets.unsqueeze(0)  # [np, p^2, 2]
+            inds = inds.view(-1, 2)  # [N, 2]
+            inds = inds[:, 0] * W + inds[:, 1]  # [N], flatten
 
             inds = inds.expand([B, N])
-        
+
         # only get rays in the specified rect
         elif rect is not None:
             # assert B == 1
             mask = torch.zeros(H, W, dtype=torch.bool, device=device)
             xmin, xmax, ymin, ymax = rect
             mask[xmin:xmax, ymin:ymax] = 1
-            inds = torch.where(mask.view(-1))[0] # [nzn]
-            inds = inds.unsqueeze(0) # [1, N]
+            inds = torch.where(mask.view(-1))[0]  # [nzn]
+            inds = inds.unsqueeze(0)  # [1, N]
 
         else:
-            inds = torch.randint(0, H*W, size=[N], device=device) # may duplicate
+            inds = torch.randint(0, H * W, size=[N], device=device)  # may duplicate
             inds = inds.expand([B, N])
 
         i = torch.gather(i, -1, inds)
         j = torch.gather(j, -1, inds)
     else:
-        inds = torch.arange(H*W, device=device).expand([B, H*W])
-    
+        inds = torch.arange(H * W, device=device).expand([B, H * W])
+
     results['i'] = i
     results['j'] = j
     results['inds'] = inds
@@ -354,12 +352,12 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
     ys = (j - cy) / fy * zs
     directions = torch.stack((xs, ys, zs), dim=-1)
     directions = directions / torch.norm(directions, dim=-1, keepdim=True)
-    rays_d = directions @ poses[:, :3, :3].transpose(-1, -2) # (B, N, 3)
+    rays_d = directions @ poses[:, :3, :3].transpose(-1, -2)  # (B, N, 3)
 
-    rays_o = poses[..., :3, 3] # [B, 3]
-    rays_o = rays_o[..., None, :].expand_as(rays_d) # [B, N, 3]
+    rays_o = poses[..., :3, 3]  # [B, 3]
+    rays_o = rays_o[..., None, :].expand_as(rays_d)  # [B, N, 3]
 
-    results['rays_o'] = rays_o #.clone()
+    results['rays_o'] = rays_o  #.clone()
     results['rays_d'] = rays_d
     return results
 
@@ -379,16 +377,16 @@ def torch_vis_2d(x, renormalize=False):
     import matplotlib.pyplot as plt
     import numpy as np
     import torch
-    
+
     if isinstance(x, torch.Tensor):
         if len(x.shape) == 3:
-            x = x.permute(1,2,0).squeeze()
+            x = x.permute(1, 2, 0).squeeze()
         x = x.detach().cpu().numpy()
-        
+
     print(f'[torch_vis_2d] {x.shape}, {x.dtype}, {x.min()} ~ {x.max()}')
-    
+
     x = x.astype(np.float32)
-    
+
     # renormalize
     if renormalize:
         x = (x - x.min(axis=0, keepdims=True)) / (x.max(axis=0, keepdims=True) - x.min(axis=0, keepdims=True) + 1e-8)
@@ -398,7 +396,6 @@ def torch_vis_2d(x, renormalize=False):
 
 
 def extract_fields(bound_min, bound_max, resolution, query_func, S=128):
-
     X = torch.linspace(bound_min[0], bound_max[0], resolution).split(S)
     Y = torch.linspace(bound_min[1], bound_max[1], resolution).split(S)
     Z = torch.linspace(bound_min[2], bound_max[2], resolution).split(S)
@@ -409,8 +406,9 @@ def extract_fields(bound_min, bound_max, resolution, query_func, S=128):
             for yi, ys in enumerate(Y):
                 for zi, zs in enumerate(Z):
                     xx, yy, zz = custom_meshgrid(xs, ys, zs)
-                    pts = torch.cat([xx.reshape(-1, 1), yy.reshape(-1, 1), zz.reshape(-1, 1)], dim=-1) # [S, 3]
-                    val = query_func(pts).reshape(len(xs), len(ys), len(zs)).detach().cpu().numpy() # [S, 1] --> [x, y, z]
+                    pts = torch.cat([xx.reshape(-1, 1), yy.reshape(-1, 1), zz.reshape(-1, 1)], dim=-1)  # [S, 3]
+                    val = query_func(pts).reshape(len(xs), len(ys),
+                                                  len(zs)).detach().cpu().numpy()  # [S, 1] --> [x, y, z]
                     u[xi * S: xi * S + len(xs), yi * S: yi * S + len(ys), zi * S: zi * S + len(zs)] = val
     return u
 
@@ -420,7 +418,7 @@ def extract_geometry(bound_min, bound_max, resolution, threshold, query_func):
     u = extract_fields(bound_min, bound_max, resolution, query_func)
 
     #print(u.shape, u.max(), u.min(), np.percentile(u, 50))
-    
+
     vertices, triangles = mcubes.marching_cubes(u, threshold)
 
     b_max_np = bound_max.detach().cpu().numpy()
