@@ -1,6 +1,4 @@
 import asyncio
-import concurrent
-import copy
 import gc
 import json
 import os
@@ -8,13 +6,13 @@ import queue
 import threading
 import time
 import uuid
-from asyncio import wrap_future
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import List, Union, Literal, Dict
-from typing import Optional, Any
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from typing import Optional
+
 import torch
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -24,10 +22,10 @@ from pydantic import BaseModel, Field, model_validator, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
-from utils.uitls import read_json_file
-from crop_paste.paste_video import paste_back
+from crop_paste.paste_back import paste_back
 from inference.genefacepp_infer import GeneFace2Infer, get_arg
 from utils.log_utils import logger
+from utils.uitls import read_json_file
 
 
 # 请求数据模型
@@ -316,7 +314,7 @@ async def run_inference_async(infer_para):
     character = infer_para['character']
     blocking = infer_para['blocking']
     final_video_path = infer_para['final_video_path']
-    crop_video_path = infer_para['out_name']
+    infer_video_path = infer_para['out_name']
     ori_video_path = inference_info[character]['ori_video']
     crop_coordinates_list = inference_info[character]['crop_coordinates']
     logs = f"inference parameters: {infer_para}"
@@ -324,7 +322,7 @@ async def run_inference_async(infer_para):
     loop = asyncio.get_event_loop()
     task = loop.run_in_executor(thread_executor, infer_in_executor, infer_para)
     _ = await task if blocking else None
-    _ if paste == 'default' else paste_back(crop_video_path, ori_video_path, final_video_path, crop_coordinates_list)
+    _ if paste == 'default' else paste_back(infer_video_path, ori_video_path, final_video_path, crop_coordinates_list)
     return final_video_path
 
 
@@ -378,12 +376,12 @@ def infer_in_executor(infer_para):
 #     final_video_name = f"{video_id}.mp4"
 #     cropped_video_name = f"{video_id}.cropped.mp4"
 #     final_video_path = os.path.join(video_dir, final_video_name)
-#     crop_video_path = os.path.join(video_dir, cropped_video_name)
+#     infer_video_path = os.path.join(video_dir, cropped_video_name)
 #     logs = f"inference param: {infer_para}"
 #     geneface_log.info(logs)
 #     infer_para = copy.deepcopy(infer_para)
 #     infer_para['drv_audio'] = infer_para['audio_path']
-#     infer_para['out_name'] = final_video_path if paste == 'default' else crop_video_path
+#     infer_para['out_name'] = final_video_path if paste == 'default' else infer_video_path
 #     # 队列逻辑确保只有一个任务进行
 #     model_path = inference_info[character]['torso_ckpt']
 #     infer_queue = inference_info[character].get("queue", queue.Queue)
@@ -421,7 +419,7 @@ def infer_in_executor(infer_para):
 #                 except Exception as e:
 #                     raise RuntimeError(f"Error cleaning up queue: {e}")
 #
-#     video_path = final_video_path if paste == 'default' else paste_back(crop_video_path, ori_video_path,
+#     video_path = final_video_path if paste == 'default' else paste_back(infer_video_path, ori_video_path,
 #                                                                         final_video_path, crop_coordinates_tuple)
 #     return video_path
 
@@ -497,12 +495,12 @@ async def generate_video(request: VideoGenerateRequest):
     final_video_name = f"{video_id}.mp4"
     cropped_video_name = f"{video_id}.cropped.mp4"
     final_video_path = os.path.join(video_dir, final_video_name)
-    crop_video_path = os.path.join(video_dir, cropped_video_name)
-    crop_video_path = final_video_path if paste == 'default' else crop_video_path
+    infer_video_path = os.path.join(video_dir, cropped_video_name)
+    infer_video_path = final_video_path if paste == 'default' else infer_video_path
     infer_data = {'character': character, 'blocking': blocking, 'paste': paste, "parallel": is_parallel,
                   'torso_ckpt': inference_info[character]['torso_ckpt'],
                   'head_ckpt': inference_info[character]['head_ckpt'],
-                  'drv_audio': audio_path, 'out_name': crop_video_path, 'final_video_path': final_video_path}
+                  'drv_audio': audio_path, 'out_name': infer_video_path, 'final_video_path': final_video_path}
     infer_para.update(infer_data)
     phase = 0
     try:
@@ -633,12 +631,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 final_video_name = f"{video_id}.mp4"
                 cropped_video_name = f"{video_id}.cropped.mp4"
                 final_video_path = os.path.join(video_dir, final_video_name)
-                crop_video_path = os.path.join(video_dir, cropped_video_name)
-                crop_video_path = final_video_path if paste == 'default' else crop_video_path
+                infer_video_path = os.path.join(video_dir, cropped_video_name)
+                infer_video_path = final_video_path if paste == 'default' else infer_video_path
                 infer_data = {'character': character, 'blocking': blocking, 'paste': paste,
                               'torso_ckpt': inference_info[character]['torso_ckpt'],
                               'head_ckpt': inference_info[character]['head_ckpt'],
-                              'drv_audio': audio_path, 'out_name': crop_video_path,
+                              'drv_audio': audio_path, 'out_name': infer_video_path,
                               'final_video_path': final_video_path}
                 infer_para.update(infer_data)
                 if not os.path.exists(audio_path):

@@ -1,10 +1,10 @@
 #!/bin/bash
 # usage: CUDA_VISIBLE_DEVICES=0 bash data_gen/runs/nerf/run.sh <VIDEO_ID>
 # please place video to data/raw/videos/${VIDEO_ID}.mp4
+export PYTHONPATH=./:$PYTHONPATH
 
 VIDEO_ID=$1
 echo Processing $VIDEO_ID
-
 
 #echo Resizing the video to 512x512
 ffmpeg -i data/raw/videos/${VIDEO_ID}.mp4 -vf fps=25,scale=w=512:h=512 -qmin 1 -q:v 1 -y data/raw/videos/${VIDEO_ID}_512.mp4

@@ -601,7 +601,7 @@ class GeneFace2Infer:
     @classmethod
     def example_run(cls, inp=None):
         inp_tmp = {
-            'drv_audio_name': 'data/raw/val_wavs/zozo.wav',
+            'drv_audio_name': 'data/raw/audios/zozo.wav',
             'src_image_name': 'data/raw/val_imgs/Macron.png'
         }
         if inp is not None:
@@ -623,7 +623,7 @@ def get_arg(torso_ckpt=None, head_ckpt=None):
     parser.add_argument("--head_ckpt", default=head_ckpt)
     parser.add_argument("--postnet_ckpt", default='')
     parser.add_argument("--torso_ckpt", default=torso_ckpt)
-    parser.add_argument("--drv_audio", default='data/raw/val_wavs/MacronSpeech.wav')
+    parser.add_argument("--drv_audio", default='data/raw/audios/MacronSpeech.wav')
     parser.add_argument("--drv_pose", default='nearest',
                         help="目前仅支持源视频的pose,包括从头开始和指定区间两种,暂时不支持in-the-wild的pose")
     parser.add_argument("--blink_mode", default='period')  # none | period

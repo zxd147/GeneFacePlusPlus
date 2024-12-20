@@ -49,7 +49,7 @@ cd /data/geneface/
 export PYTHONPATH=./
 
 export HF_ENDPOINT=https://hf-mirror.com
-python inference/genefacepp_infer.py --a2m_ckpt=checkpoints/audio2motion_vae --head_ckpt= --torso_ckpt=checkpoints/motion2video_nerf/may_torso --drv_aud=data/raw/val_wavs/MacronSpeech.wav --out_name=may_demo.mp4
+python inference/genefacepp_infer.py --a2m_ckpt=checkpoints/audio2motion_vae --head_ckpt= --torso_ckpt=checkpoints/motion2video_nerf/may_torso --drv_aud=data/raw/audios/MacronSpeech.wav --out_name=may_demo.mp4
 
 ```
 

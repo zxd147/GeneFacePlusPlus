@@ -159,7 +159,7 @@ def genefacepp_demo(
                     with gr.TabItem('Upload audio'):
                         with gr.Column(variant='panel'):
                             drv_audio_name = gr.Audio(label="Input audio (required)", sources=sources, type="filepath",
-                                                      value='data/raw/val_wavs/MacronSpeech.wav')
+                                                      value='data/raw/audios/MacronSpeech.wav')
 
             with gr.Column(variant='panel'):
                 with gr.Tabs(elem_id="checkbox"):

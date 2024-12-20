@@ -13,7 +13,8 @@ def model_download_command_factory(args):
 
 
 class ModelDownloadCommand(BaseInsightFaceCLICommand):
-    #_url_format = '{repo_url}models/{file_name}.zip'
+    # _url_format = '{repo_url}models/{file_name}.zip'
+
     @staticmethod
     def register_subcommand(parser: ArgumentParser):
         download_parser = parser.add_parser("model.download")
@@ -33,4 +34,3 @@ class ModelDownloadCommand(BaseInsightFaceCLICommand):
 
     def run(self):
         download('models', self._model, force=self._force, root=self._root)
-
