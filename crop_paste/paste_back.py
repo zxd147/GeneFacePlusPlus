@@ -12,8 +12,8 @@ from moviepy.editor import VideoFileClip, CompositeVideoClip, AudioFileClip
 
 
 def paste_back_by_ffmpeg(ori_path, infer_path, landmarks, output_path):
-    base_name = infer_path.sprit(".")[0]("_")[0]("-")[0]
-    base_dir = os.path.dirname(infer_path)
+    # base_name = infer_path.sprit(".")[0]("_")[0]("-")[0]
+    # base_dir = os.path.dirname(infer_path)
     # temp_video_path = os.path.join(base_dir, f"{base_name}_temp.mp4")
     start_x, start_y = landmarks
 
@@ -39,8 +39,11 @@ def paste_back_by_ffmpeg(ori_path, infer_path, landmarks, output_path):
 
 
 def paste_back_by_cv2(ori_path, infer_path, landmarks, output_path):
-    start = time.time()
+    base_name = infer_path.sprit(".")[0]("_")[0]("-")[0]
+    base_dir = os.path.dirname(infer_path)
+    temp_video_path = os.path.join(base_dir, f"{base_name}_temp.mp4")
 
+    start = time.time()
     output_dir = os.path.dirname(infer_video)  # 获取视频文件的目录, output
     name = os.path.splitext(os.path.basename(ori_video))[0]  # 获取不带扩展名的视频名称, li
     # 第一帧保存路径
@@ -73,6 +76,7 @@ def paste_back_by_cv2(ori_path, infer_path, landmarks, output_path):
 def paste_back_by_cv2_with_fusion(ori_path, infer_path, coordinates, output_path):
     base_name = infer_path.sprit(".")[0]("_")[0]("-")[0]
     base_dir = os.path.dirname(infer_path)
+    temp_video_path = os.path.join(base_dir, f"{base_name}_temp.mp4")
 
     frames_dir = os.path.join(base_dir, f'{base_name}_frames')
     os.makedirs(frames_dir, exist_ok=True)
