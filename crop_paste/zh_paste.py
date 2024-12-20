@@ -9,21 +9,72 @@ import concurrent.futures
 import time
 
 
-def task(frame_numbers, ori_video_path, infer_video_path, output_frames_dir, crop_coordinates, blend_range, iterations,
-         feather_size):
-    start, end = frame_numbers
-    ori_video = cv2.VideoCapture(ori_video_path)
-    infer_video = cv2.VideoCapture(infer_video_path)
+def infer_merge_video(ori_path, infer_path, coordinates, output_path):
+    base_name = infer_path.sprit(".")[0]("_")[0]("-")[0]
+    base_dir = os.path.dirname(infer_path)
 
-    while start <= end:
-        infer_video.set(cv2.CAP_PROP_POS_FRAMES, start)
+    frames_dir = os.path.join(base_dir, f'{base_name}_frames')
+    os.makedirs(frames_dir, exist_ok=True)
+    temp_output_path = output_path.replace('.mp4', '_temp.mp4')
+
+    infer_video = cv2.VideoCapture(infer_video_path)
+    infer_fps = infer_video.get(cv2.CAP_PROP_FPS)
+    infer_total_frames = int(infer_video.get(cv2.CAP_PROP_FRAME_COUNT))
+    infer_video.release()
+
+    blend_range = 50  # 融合范围
+    iterations = 3  # 融合次数
+    feather_size = 50  # 羽化边缘
+
+    start_time = time.time()
+    max_workers = os.cpu_count()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        num_each = int(infer_total_frames / max_workers)
+        frame_numbers = {}
+        for i in range(max_workers - 1):
+            frame_numbers[i] = (i * num_each, (i + 1) * num_each - 1)
+        frame_numbers[max_workers - 1] = ((max_workers - 1) * num_each, infer_total_frames - 1)
+
+        futures = [executor.submit(fusion_paste_task, frame_numbers[i], ori_path, infer_path, frames_dir,
+                                   coordinates, blend_range, iterations, feather_size) for i in range(max_workers)]
+
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                result = future.result()
+                print(f"任务完成,结果:{result}")
+            except Exception as exc:
+                print(f"任务生成异常:{exc}")
+
+    merge_end_time = time.time()
+    merge_elapsed_time = merge_end_time - start_time
+    print(f"融合步骤代码块执行耗时:{merge_elapsed_time}秒")
+
+    ffmpeg_cmd = f"ffmpeg -y -r {infer_fps} -i {frames_dir}/frame_%04d.jpg -c:v libx264 -pix_fmt yuv420p {temp_output_path}"
+    subprocess.call(ffmpeg_cmd, shell=True)
+    ffmpeg_cmd = f"ffmpeg -y -i {temp_output_path} -i {infer_path} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 {output_path}"
+    subprocess.call(ffmpeg_cmd, shell=True)
+
+    compose_end_time = time.time()
+    compose_elapsed_time = compose_end_time - merge_end_time
+    print(f"合并步骤代码块执行耗时:{compose_elapsed_time}秒")
+    return output_path
+
+
+def fusion_paste_task(frame_numbers, ori_path, infer_path, frames_dir, coordinates, blend_range, iterations, feather_size):
+    paste_start, paste_end = frame_numbers
+    ori_video = cv2.VideoCapture(ori_path)
+    infer_video = cv2.VideoCapture(infer_path)
+
+    while paste_start <= paste_end:
+        infer_video.set(cv2.CAP_PROP_POS_FRAMES, paste_start)
         _, infer_frame = infer_video.read()
-        ori_video.set(cv2.CAP_PROP_POS_FRAMES, start)
+        ori_video.set(cv2.CAP_PROP_POS_FRAMES, paste_start)
         _, ori_frame = ori_video.read()
-        start_x = crop_coordinates["start_x"]  # x
-        start_y = crop_coordinates["start_y"]  # y
-        width = crop_coordinates["width"]  # 512
-        height = crop_coordinates["height"]  # 512
+        start_x = coordinates["start_x"]  # x
+        start_y = coordinates["start_y"]  # y
+        width = coordinates["width"]  # 512
+        height = coordinates["height"]  # 512
 
         resized_cropped_image = cv2.resize(infer_frame, (width, height))
         # 这个遮罩的目的是实现图像的平滑融合，主要用于羽化边缘。
@@ -51,10 +102,10 @@ def task(frame_numbers, ori_video_path, infer_video_path, output_frames_dir, cro
             blended_result = cv2.seamlessClone(blended_result, ori_frame, (mask * 255).astype(np.uint8),
                                                (start_x + width // 2, start_y + height // 2), cv2.NORMAL_CLONE)
 
-        frame_filename = os.path.join(output_frames_dir, f"frame_{start:04d}.jpg")
+        frame_filename = os.path.join(frames_dir, f"frame_{paste_start:04d}.jpg")
         cv2.imwrite(frame_filename, blended_result)
         print(f"{frame_numbers}: 已保存{frame_filename}")
-        start += 1
+        paste_start += 1
 
     ori_video.release()
     infer_video.release()
@@ -62,71 +113,24 @@ def task(frame_numbers, ori_video_path, infer_video_path, output_frames_dir, cro
     return f'Processed frames {frame_numbers}'
 
 
-def infer_merge_video(ori_video_path, infer_video_path, crop_coordinates_path):
-    output_frames_dir = os.path.splitext(infer_video_path)[0] + "_output_frames"
-    os.makedirs(output_frames_dir, exist_ok=True)
-    with open(crop_coordinates_path, "r") as file:
-        crop_coordinates = json.load(file)
-
-    infer_video = cv2.VideoCapture(infer_video_path)
-    infer_fps = infer_video.get(cv2.CAP_PROP_FPS)
-    infer_total_frames = int(infer_video.get(cv2.CAP_PROP_FRAME_COUNT))
-    infer_video.release()
-
-    blend_range = 50
-    iterations = 3
-    feather_size = 50
-
-    start_time = time.time()
-    max_workers = os.cpu_count()
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        num_each = int(infer_total_frames / max_workers)
-        frame_numbers = {}
-        for i in range(max_workers - 1):
-            frame_numbers[i] = (i * num_each, (i + 1) * num_each - 1)
-        frame_numbers[max_workers - 1] = ((max_workers - 1) * num_each, infer_total_frames - 1)
-
-        futures = [executor.submit(task, frame_numbers[i], ori_video_path, infer_video_path, output_frames_dir,
-                                   crop_coordinates, blend_range, iterations, feather_size) for i in range(max_workers)]
-
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                result = future.result()
-                print(f"任务完成,结果:{result}")
-            except Exception as exc:
-                print(f"任务生成异常:{exc}")
-
-    merge_end_time = time.time()
-    merge_elapsed_time = merge_end_time - start_time
-    print(f"融合步骤代码块执行耗时:{merge_elapsed_time}秒")
-
-    output_video = os.path.splitext(infer_video_path)[0] + "_output.mp4"
-    ffmpeg_cmd = f"ffmpeg -y -r {infer_fps} -i {output_frames_dir}/frame_%04d.jpg -c:v libx264 -pix_fmt yuv420p {output_video}"
-    subprocess.call(ffmpeg_cmd, shell=True)
-
-    final_output_video = os.path.splitext(infer_video_path)[0] + "_final_output.mp4"
-    ffmpeg_cmd = f"ffmpeg -y -i {output_video} -i {infer_video_path} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 {final_output_video}"
-    subprocess.call(ffmpeg_cmd, shell=True)
-    compose_end_time = time.time()
-    compose_elapsed_time = compose_end_time - merge_end_time
-    print(f"合并步骤代码块执行耗时:{compose_elapsed_time}秒")
-    return final_output_video
-
-
 if __name__ == "__main__":
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Process a video, crop faces, and save coordinates.')
-    parser.add_argument('--ori_video', type=str, help='Path to the video file',
-                        default='/home/zxd/code/Vision/GeneFacePlusPlus/temp/li_resized_test.mp4')
-    parser.add_argument('--infer_video', type=str, help='Path to the json file',
-                        default='/home/zxd/code/Vision/GeneFacePlusPlus/temp/li_crop.mp4')
+    default_ori_video = 'data/raw/videos/li/li_682x1212_an.mp4'
+    default_infer_video = 'output/li/li_infer.mp4'
+    default_coordinates_path = 'data/raw/videos/li/li.json'
+    default_output_video_path = 'output/li/li_paste.mp4'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--ori', type=str, default=default_ori_video)  # 输入的视频路径
+    parser.add_argument('--infer', type=str, default=default_infer_video)  # 输出的视频路径
+    parser.add_argument('--coordinates', type=str, default=default_coordinates_path)  # 输出的视频路径
+    parser.add_argument('--output', type=str, default=default_output_video_path)  # 输出的视频路径
     args = parser.parse_args()
-    ori_video = args.ori_video
-    infer_video = args.infer_video
-    crop_coordinates_json = ori_video.replace('mp4', 'json')
-    final_video = infer_merge_video(ori_video, infer_video, crop_coordinates_json)
-    print(final_video)
-    print("done!")
-
-
+    ori_video_path = args.ori
+    infer_video_path = args.infer
+    coordinates_path = args.coordinates
+    output_video_path = args.output
+    with open(coordinates_path, "r") as file:
+        coordinates_json = json.load(file)
+    start = time.time()
+    final_video = infer_merge_video(ori_video_path, infer_video_path, coordinates_json, output_video_path)
+    end = time.time()
+    print(f'Paste done, save in {final_video}, Elapsed time: {end - start} seconds!')

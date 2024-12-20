@@ -140,7 +140,7 @@ def parameter():
     parser.add_argument("--head_ckpt", default='')
     parser.add_argument("--postnet_ckpt", default='')
     parser.add_argument("--torso_ckpt", default='checkpoints/motion2video_nerf/may_torso')
-    parser.add_argument("--drv_aud", default='data/raw/val_wavs/MacronSpeech.wav')
+    parser.add_argument("--drv_aud", default='data/raw/audios/MacronSpeech.wav')
     parser.add_argument("--drv_pose", default='nearest',
                         help="目前仅支持源视频的pose,包括从头开始和指定区间两种,暂时不支持in-the-wild的pose")
     parser.add_argument("--blink_mode", default='none')  # none | period

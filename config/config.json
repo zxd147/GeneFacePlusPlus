@@ -15,8 +15,8 @@
             "head_ckpt": "",
             "postnet_ckpt": "",
             "a2m_ckpt": "checkpoints/audio2motion_vae",
-            "ori_video": "config/ori_video/huang_ori.mp4",
-            "crop_coordinates": [256,256],
+            "ori_video": "data/raw/videos/huang/huang_512x512_an.mp4",
+            "crop_coordinates": [0, 0, 512, 512],
             "infer_queue": null,
             "queue_lock": null,
             "target_device": null
@@ -28,7 +28,7 @@
             "a2m_ckpt": "checkpoints/audio2motion_vae",
             "torso_ckpt": "checkpoints/motion2video_nerf/li_torso",
             "ori_video": "config/ori_video/li_ori.mp4",
-            "crop_coordinates": [256,256],
+            "crop_coordinates": [79, 212, 512, 512],
             "infer_queue": null,
             "queue_lock": null,
             "target_device": null
@@ -40,7 +40,19 @@
             "a2m_ckpt": "checkpoints/audio2motion_vae",
             "torso_ckpt": "checkpoints/motion2video_nerf/yu_torso",
             "ori_video": "config/ori_video/yu_ori.mp4",
-            "crop_coordinates": [256,256],
+            "crop_coordinates": [179, 418, 512, 512],
+            "infer_queue": null,
+            "queue_lock": null,
+            "target_device": null
+        },
+        "gu": {
+            "model": null,
+            "postnet_ckpt": "",
+            "head_ckpt": "",
+            "a2m_ckpt": "checkpoints/audio2motion_vae",
+            "torso_ckpt": "checkpoints/motion2video_nerf/gu_torso",
+            "ori_video": "config/ori_video/gu_ori.mp4",
+            "crop_coordinates": [46, 112, 512, 512],
             "infer_queue": null,
             "queue_lock": null,
             "target_device": null

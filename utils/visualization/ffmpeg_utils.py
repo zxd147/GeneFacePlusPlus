@@ -14,5 +14,5 @@ def imgs_to_video(img_dir, video_path, audio_path=None, verbose=True):
 
 
 if __name__ == '__main__':
-    imgs_to_video('infer_out/tmp_imgs', 'infer_out/tmp_imgs/out.mp4', 'data/raw/val_wavs/zozo.wav')
-    imgs_to_video('infer_out/tmp_imgs', 'infer_out/tmp_imgs/out2.mp4', 'data/raw/val_wavs/zozo.wav')
+    imgs_to_video('infer_out/tmp_imgs', 'infer_out/tmp_imgs/out.mp4', 'data/raw/audios/zozo.wav')
+    imgs_to_video('infer_out/tmp_imgs', 'infer_out/tmp_imgs/out2.mp4', 'data/raw/audios/zozo.wav')

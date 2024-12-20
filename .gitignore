@@ -19,7 +19,7 @@ deep_3drecon/checkpoints/*
 !/data/.gitkeep
 !/data/binary/videos/May/.gitkeep
 !data/raw/videos/May.mp4
-!data/raw/val_wavs/zozo.wav
+!data/raw/audios/zozo.wav
 infer_out
 rsync
 .idea

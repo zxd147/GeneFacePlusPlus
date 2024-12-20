@@ -29,10 +29,10 @@ Suppose you have a video named `{Video_ID}.mp4`
 ## commandline inference
 ```
 # we provide a inference script.
-CUDA_VISIBLE_DEVICES=0  python inference/genefacepp_infer.py --head_ckpt= --torso_ckpt=motion2video_nerf/may_torso --drv_aud=data/raw/val_wavs/MacronSpeech.wav
+CUDA_VISIBLE_DEVICES=0  python inference/genefacepp_infer.py --head_ckpt= --torso_ckpt=motion2video_nerf/may_torso --drv_aud=data/raw/audios/MacronSpeech.wav
 
 # --debug option could visualize intermediate steps during inference
-CUDA_VISIBLE_DEVICES=0  python inference/genefacepp_infer.py --head_ckpt= --torso_ckpt=motion2video_nerf/may_torso --drv_aud=data/raw/val_wavs/MacronSpeech.wav --debug
+CUDA_VISIBLE_DEVICES=0  python inference/genefacepp_infer.py --head_ckpt= --torso_ckpt=motion2video_nerf/may_torso --drv_aud=data/raw/audios/MacronSpeech.wav --debug
 ```
 
 ## WebGUI Demo 

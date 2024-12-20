@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 from .model_download import ModelDownloadCommand
 from .rec_add_mask_param import RecAddMaskParamCommand
 
+
 def main():
     parser = ArgumentParser("InsightFace CLI tool", usage="insightface-cli <command> [<args>]")
     commands_parser = parser.add_subparsers(help="insightface-cli command-line helpers")
@@ -26,4 +27,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
