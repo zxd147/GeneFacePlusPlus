@@ -44,7 +44,7 @@ def paste_back_by_ffmpeg(ori_path, infer_path, landmarks, output_path):
         return infer_path
     finally:
         exec_end = time.time()
-        logger.info(f'Elapsed time: {exec_end - exec_start} seconds.')
+        logger.debug(f'Elapsed time: {exec_end - exec_start} seconds.')
 
 
 def paste_back_by_packages(ori_path, infer_path, landmarks, output_path):
@@ -80,7 +80,7 @@ def paste_back_by_packages(ori_path, infer_path, landmarks, output_path):
         return infer_path
     finally:
         exec_end = time.time()
-        logger.info(f'Elapsed time: {exec_end - exec_start} seconds.')
+        logger.debug(f'Elapsed time: {exec_end - exec_start} seconds.')
 
 
 def paste_back_by_packages_with_fusion(ori_path, infer_path, coordinates, output_path):
@@ -101,6 +101,7 @@ def paste_back_by_packages_with_fusion(ori_path, infer_path, coordinates, output
     feather_size = 50  # 羽化边缘
     max_workers = os.cpu_count()
 
+    logger.info(f"Starting coordinates for overlay: {start_x, start_y}", )
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         num_each = int(total_frames / max_workers)
         frame_numbers = {}
@@ -114,13 +115,13 @@ def paste_back_by_packages_with_fusion(ori_path, infer_path, coordinates, output
         for future in concurrent.futures.as_completed(futures):
             try:
                 result = future.result()
-                logger.info(f"Task completed, result: {result}")
+                logger.debug(f"Task completed, result: {result}")
             except Exception as exc:
                 logger.error(f"Task generated exception: {exc}")
 
     merge_exec_end = time.time()
     merge_elapsed_time = merge_exec_end - exec_start
-    logger.info(f"The fusion step code block execution time: {merge_elapsed_time} seconds")
+    logger.debug(f"The fusion step code block execution time: {merge_elapsed_time} seconds")
     try:
         # ffmpeg_cmd = f"ffmpeg -y -r {fps} -i {frames_dir}/frame_%04d.jpg -c:v libx264 -pix_fmt yuv420p {temp_output_path}"
         # subprocess.call(ffmpeg_cmd, shell=True)
@@ -146,7 +147,7 @@ def paste_back_by_packages_with_fusion(ori_path, infer_path, coordinates, output
     finally:
         compose_exec_end = time.time()
         compose_elapsed_time = compose_exec_end - merge_exec_end
-        logger.info(f"The execution time of the merge step code block is: {compose_elapsed_time} seconds")
+        logger.debug(f"The execution time of the merge step code block is: {compose_elapsed_time} seconds")
 
 
 def get_video_info_by_ffmpeg(video_path):
@@ -166,7 +167,7 @@ def get_video_info_by_ffmpeg(video_path):
         fps = eval(output[0])  # 帧率可能是 "numerator/denominator" 格式，需要转换为浮动数值
         duration = float(output[1])  # 时长
         total_frames = int(output[2])  # 获取总帧数
-        logger.info(f"Video info: duration={duration}, fps={fps}, total_frames={total_frames}")
+        logger.debug(f"Video info: duration={duration}, fps={fps}, total_frames={total_frames}")
         return duration, fps, total_frames
     except subprocess.CalledProcessError as e:
         logger.error(f"Error occurred while getting video info: {e}")
@@ -198,7 +199,7 @@ def get_face_coordinates(face_detector, first_frame, first_frame_path):
         # 计算并返回人脸中心点
         face_x = (face_x1 + face_x2) // 2
         face_y = (face_y1 + face_y2) // 2
-        logger.info("Center coordinates of the first detected face:", face_x, face_y)
+        logger.debug("Center coordinates of the first detected face:", face_x, face_y)
         return face_x, face_y
     else:
         raise ValueError("No face detected in the first frame, will exit.")
@@ -249,7 +250,7 @@ def fusion_paste_task(frame_numbers, ori_path, infer_path, frames_dir, coordinat
 
         frame_filename = os.path.join(frames_dir, f"frame_{paste_start:04d}.jpg")
         cv2.imwrite(frame_filename, blended_result)
-        logger.info(f"{frame_numbers}: Saved {frame_filename}")
+        logger.debug(f"{frame_numbers}: Saved {frame_filename}")
         paste_start += 1
 
     ori_video.release()
@@ -291,7 +292,8 @@ if __name__ == "__main__":
             final_output_video = paste_back_by_packages_with_fusion(ori_video_path, infer_video_path, landmarks_coords,
                                                                     output_video_path)
     else:
-        logger.info(f"Not such mode: {mode}")
+        logger.error(f"Not such mode: {mode}")
         final_output_video = None
     logger.info(f"save in {final_output_video}!")
     logger.info("paste done!")
+

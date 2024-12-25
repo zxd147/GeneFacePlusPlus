@@ -24,7 +24,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
 from utils.uitls import read_json_file
-from crop_paste.paste_video import paste_back
+from crop_and_paste.paste_video import paste_back
 from inference.genefacepp_infer import GeneFace2Infer, get_arg
 from utils.log_utils import logger
 

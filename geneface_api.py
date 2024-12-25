@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field, model_validator, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
-from crop_paste.paste_back import paste_back_by_ffmpeg
+from crop_and_paste.paste_back import paste_back_by_ffmpeg
 from inference.genefacepp_infer import GeneFace2Infer, get_arg
 from utils.log_utils import logger
 from utils.uitls import read_json_file
@@ -455,7 +455,7 @@ process_executor = ProcessPoolExecutor(max_workers=10)  # 设置线程池大小�
 geneface_log = logger
 geneface_app = FastAPI(lifespan=lifespan)
 # CORS 中间件配置
-# geneface_app.add_middleware(BasicAuthMiddleware, secret_key=secret_key)
+geneface_app.add_middleware(BasicAuthMiddleware, secret_key=secret_key)
 geneface_app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'],
                             allow_headers=['*'], )
 
