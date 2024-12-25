@@ -14,7 +14,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def multi_crop(input_path, output_path=None, resized=True, crop_size=960, target_size=512, target_fps=25):
-    base_name = input_path.sprit(".")[0]("_")[0]("-")[0]
+    base_name = input_path.split(".")[0].split("_")[0].split("-")[0]
     base_dir = os.path.dirname(input_path)
 
     video_width, video_height = get_video_resolution(input_path)

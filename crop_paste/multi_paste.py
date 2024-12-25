@@ -32,7 +32,7 @@ def overlay_image(original_image, inference_image, x, y):
 
 
 def multi_paste(ori_path, infer_path, landmarks, output_path):
-    base_name = infer_path.sprit(".")[0]("_")[0]("-")[0]
+    base_name = infer_path.split(".")[0].split("_")[0].split("-")[0]
     base_dir = os.path.dirname(infer_path)
     temp_video_path = os.path.join(base_dir, f"{base_name}_temp.mp4")
 

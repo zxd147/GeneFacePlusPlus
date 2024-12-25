@@ -39,7 +39,7 @@ def detect_face_center(face_detector, image, first_frame_face_path):
 
 
 def crop_out_direct(input_path, output_path, crop_size, index=1, crop_fps=25):
-    base_name = input_path.sprit(".")[0]("_")[0]("-")[0]
+    base_name = input_path.split(".")[0].split("_")[0].split("-")[0]
     base_dir = os.path.dirname(input_path)
 
     # 初始化dlib的人脸检测器

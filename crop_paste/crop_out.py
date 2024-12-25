@@ -8,12 +8,12 @@ import dlib
 import numpy as np
 
 
-def crop_out(input_path, output_path=None, resized=True, crop_size=960, target_size=512, target_fps=25, index=1):
-    base_name = input_path.sprit(".")[0]("_")[0]("-")[0]
+def crop_out(input_path, output_path=None, resized=True, crop_size=960, target_size=512, target_fps=25, index=0):
+    base_name = input_path.split(".")[0].split("_")[0].split("-")[0]
     base_dir = os.path.dirname(input_path)
     # 初始化dlib的人脸检测器
     face_detector = dlib.get_frontal_face_detector()
-    
+
     video_width, video_height = get_video_resolution(input_path)
     print(f"Original Width: {video_height}, Original Height: {video_height}")
     aspect_ratio = video_height / video_width
@@ -32,12 +32,11 @@ def crop_out(input_path, output_path=None, resized=True, crop_size=960, target_s
     final_path = os.path.join(base_dir, base_name, '_crop', '.mp4') if os.path.isdir(final_path) else final_path
     # 保存人脸特征坐标的文件
     landmarks_path = os.path.join(base_dir, f"{base_name}.npy")
-    
+    resized_path = resized_path if resized else input_path
     if resized:
-        resize_video(input_path, resized_path, target_fps, resize_width, resize_height)    
-
+        resize_video(input_path, resized_path, target_fps, resize_width, resize_height)
     face_coords = None
-    frame_number = 1
+    frame_number = 0
     video_capture = cv2.VideoCapture(resized_path)
     video_width = int(video_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
     video_height = int(video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -46,19 +45,19 @@ def crop_out(input_path, output_path=None, resized=True, crop_size=960, target_s
             ret, frame = video_capture.read()
             if not ret:
                 video_capture.release()
-                raise ValueError(f"第{frame_number}帧无法读取视频文件。")
+                raise ValueError(f"Unable to read frame {frame_number} of the video file.")
             # 获取人脸
             face_coords = detect_face_center(face_detector, frame, face_path)
             center_x, center_y = face_coords
-            print(f"第{frame_number}帧检测到人脸中心坐标: ({center_x}, {center_y})")
+            print(f"The center coordinates of the face were detected in frame {frame_number}: ({center_x}, {center_y}).")
             break
         frame_number += 1
 
     if not face_coords:
         video_capture.release()
-        raise ValueError(f"第{index}帧未检测到人脸")
+        raise ValueError(f"No face detected in frame {index}.")
     video_capture.release()
-    
+
     center_x, center_y = face_coords
     # 计算裁剪区域的起始点, +1为了向上取整
     start_x = center_x - (target_size + 1) // 2
@@ -66,7 +65,7 @@ def crop_out(input_path, output_path=None, resized=True, crop_size=960, target_s
     # 限制裁剪区域的起始点，确保裁剪区域不会超出视频边界
     start_x = int(max(0, min(start_x, video_width - target_size)))
     start_y = int(max(0, min(start_y, video_height - target_size)))
-    landmarks = [start_x, start_y, target_size, target_size]
+    landmarks = [start_x, start_y, target_size, target_size, index]
     # Save landmarks to a file
     np.save(landmarks_path, np.array(landmarks))
     print(f"Landmarks saved to {landmarks_path}")
@@ -111,7 +110,7 @@ def resize_video(input_video, resized_path, target_fps, resize_width, resize_hei
         print(f"The scaled resolution is: {resize_width}x{resize_height}")
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while converting the video: {e}")
-        
+
 
 def extract_audio_by_ffmpeg(resized_path, audio_path):
     # 提取视频的音频
@@ -160,8 +159,7 @@ def detect_face_center(face_detector, image, face_frame_path):
         print("Center coordinates of the first detected face:", face_x, face_y)
         return face_x, face_y
     else:
-        print("No face detected in the first frame, will exit.")
-        exit(1)
+        raise ValueError("No face detected in the first frame, will exit.")
 
 
 def crop_compose_video_by_ffmpeg(resized_path, final_path, target_size, target_fps, start_x, start_y):
@@ -174,7 +172,7 @@ def crop_compose_video_by_ffmpeg(resized_path, final_path, target_size, target_f
         "-y", final_path
     ]
     print('command: ', command)
-    print(f'裁剪的左上角坐标为: [{start_x}, {start_y}]')
+    print(f'The coordinates of the top left corner (左上角) of the crop are: [{start_x}, {start_y}]')
     # 运行命令
     try:
         print(f"Starting crop videos...")
@@ -185,7 +183,7 @@ def crop_compose_video_by_ffmpeg(resized_path, final_path, target_size, target_f
 
 
 if __name__ == "__main__":
-    default_in_path = '/home/zxd/code/Vision/GeneFacePlusPlus/data/raw/videos/yu_ori.mp4'
+    default_in_path = '/home/zxd/code/Vision/GeneFacePlusPlus/data/raw/videos/gu_ori.mp4'
     default_out_path = default_in_path.replace("_ori", '_crop')
     args = parser = argparse.ArgumentParser()
     parser.add_argument('--input', type=str, default=default_in_path)

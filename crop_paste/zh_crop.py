@@ -7,8 +7,8 @@ import json
 import argparse
 
 
-def crop_compose_video(input_path, output_path, resized=True, crop_size=960, target_size=512, target_fps=25):
-    base_name = input_path.sprit(".")[0]("_")[0]("-")[0]
+def crop_compose_video(input_path, output_path, resized=True, crop_size=960, target_size=512, target_fps=25, index=0):
+    base_name = input_path.split(".")[0].split("_")[0].split("-")[0]
     base_dir = os.path.dirname(input_path)
 
     # 转分辨率后的视频路径
@@ -23,7 +23,7 @@ def crop_compose_video(input_path, output_path, resized=True, crop_size=960, tar
     #  最终生成的视频帧的路径
     frames_dir = os.path.join(base_dir, f'{base_name}_frames')
 
-    crop_video(input_path, frames_dir, landmarks_path)
+    crop_video(input_path, frames_dir, landmarks_path, index)
     extract_audio(input_path, audio_path)
     compose_video(frames_dir, audio_path, final_path)
     return final_path
@@ -40,7 +40,7 @@ def get_face_coordinates(detector, image):
     return face_x, face_y
 
 
-def crop_video(input_path, frames_dir, landmarks_path=None):
+def crop_video(input_path, frames_dir, landmarks_path=None, index=0):
     # Create directory for frames
     os.makedirs(frames_dir, exist_ok=True)
     print(f"Frames will be saved to: {frames_dir}")
@@ -69,7 +69,8 @@ def crop_video(input_path, frames_dir, landmarks_path=None):
         "start_x": start_x,
         "start_y": start_y,
         "width": 512,
-        "height": 512
+        "height": 512,
+        "index": index
     }
 
     # Save the crop coordinates in JSON format

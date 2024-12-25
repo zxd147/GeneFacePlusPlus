@@ -22,7 +22,9 @@ else
 fi
 
 # 运行 Python 脚本并传递构造的文件名
-CUDA_VISIBLE_DEVICES=0 python inference/genefacepp_infer.py ${MODEL_CKPT} --drv_audio=data/raw/audios/start.wav --mouth_amp 0.4 --out_name ${OUT_NAME}
+# 静音视频
+#CUDA_VISIBLE_DEVICES=0 python inference/genefacepp_infer.py ${MODEL_CKPT} --drv_audio=data/raw/audios/silent_16k.wav --mouth_amp 0.1 --blink_mode none --out_name ${OUT_NAME}
+CUDA_VISIBLE_DEVICES=0 python inference/genefacepp_infer.py ${MODEL_CKPT} --drv_audio=data/raw/audios/start.wav --mouth_amp 0.4 --blink_mode period --out_name ${OUT_NAME}
 
 echo "输出文件已保存为：${OUT_NAME}"
 

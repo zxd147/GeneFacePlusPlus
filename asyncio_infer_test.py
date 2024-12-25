@@ -39,15 +39,16 @@ async def send_request(character: str, audio_name: str):
 # 定义异步主函数来并发发送请求，并在请求之间添加延迟
 async def main():
     characters_and_audio = [
-        # ("huang", "1725247845.wav"),
-        # ("huang", "1725247845.wav"),
-        # ("li", "1fa520b4.wav"),
-        # ("li", "1fa520b4.wav"),
-        # ("yu", "9563f766.wav"),
-        # ("yu", "9563f766.wav"),
+        ("huang", "1725247845.wav"),
+        ("huang", "1725247845.wav"),
+        ("li", "1fa520b4.wav"),
+        ("li", "1fa520b4.wav"),
+        ("yu", "9563f766.wav"),
+        ("yu", "9563f766.wav"),
         ("huang", "1725334411.wav"),
         ("li", "9962ae7d.wav"),
         ("yu", "adbbfc2c.wav"),
+        ("gu", "1725247845.wav"),
         # 可以继续添加更多的任务
     ]
 

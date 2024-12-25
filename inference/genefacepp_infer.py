@@ -116,16 +116,16 @@ def inject_blink_to_lm68(lm68, opened_eye_area_percent=0.6, closed_eye_area_perc
     return lm68, eye_area_percent
 
 
-def save_wav16k(audio_name):
+def save_wav16k(inp):
+    identity = inp['identity']
+    audio_name = inp['drv_audio']
     supported_types = ('.wav', '.mp3', '.mp4', '.avi')
     assert audio_name.endswith(supported_types), f"Now we only support {','.join(supported_types)} as audio source!"
-    wav16k_name = audio_name[:-4] + '_16k.wav'
-    # wav16k_name = wav16k_name
+    wav16k_name = f"{audio_name.split('.')[0]}_{identity}_16k.wav"
     extract_wav_cmd = f"ffmpeg -i {audio_name} -f wav -ar 16000 -v quiet -y {wav16k_name} -y"
     os.system(extract_wav_cmd)
     logs = f"Extracted wav file (16khz) from {audio_name} to {wav16k_name}."
     logger.debug(logs)
-    # save_wav16k_data = {"wav16k_name": wav16k_name}
     return wav16k_name
 
 
@@ -155,7 +155,7 @@ class GeneFace2Infer:
                  audio2secc_dir='checkpoints/audio2motion_vae/', postnet_dir='', device=None):
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        # self.device = device
+        self.hparams = {}
         self.audio2secc_dir = audio2secc_dir
         self.postnet_dir = postnet_dir
         self.head_model_dir = head_model_dir
@@ -171,6 +171,7 @@ class GeneFace2Infer:
         self.secc_renderer = SECC_Renderer(512)
         self.face3d_helper = Face3DHelper(keypoint_mode='mediapipe', use_gpu=True)
         hparams['infer_smooth_camera_path_kernel_size'] = 7
+        self.hparams = hparams
 
     @property
     def device(self):
@@ -179,14 +180,15 @@ class GeneFace2Infer:
     def load_audio2secc(self, audio2secc_dir):
         set_hparams(
             f"{os.path.dirname(audio2secc_dir) if os.path.isfile(audio2secc_dir) else audio2secc_dir}/config.yaml")
+        self.hparams = copy.deepcopy(hparams)
         self.audio2secc_hparams = copy.deepcopy(hparams)
-        if hparams["motion_type"] == 'id_exp':
+        if self.hparams["motion_type"] == 'id_exp':
             self.in_out_dim = 80 + 64
-        elif hparams["motion_type"] == 'exp':
+        elif self.hparams["motion_type"] == 'exp':
             self.in_out_dim = 64
         audio_in_dim = 1024
-        if hparams.get("use_pitch", False) is True:
-            self.model = PitchContourVAEModel(hparams, in_out_dim=self.in_out_dim, audio_in_dim=audio_in_dim)
+        if self.hparams.get("use_pitch", False) is True:
+            self.model = PitchContourVAEModel(self.hparams, in_out_dim=self.in_out_dim, audio_in_dim=audio_in_dim)
         else:
             self.model = VAEModel(in_out_dim=self.in_out_dim, audio_in_dim=audio_in_dim)
         load_ckpt(self.model, f"{audio2secc_dir}", model_name='model', strict=True)
@@ -197,6 +199,7 @@ class GeneFace2Infer:
             return None
         from modules.postnet.models import PitchContourCNNPostNet
         set_hparams(f"{os.path.dirname(postnet_dir) if os.path.isfile(postnet_dir) else postnet_dir}/config.yaml")
+        self.hparams = copy.deepcopy(hparams)
         self.postnet_hparams = copy.deepcopy(hparams)
         in_out_dim = 68 * 3
         pitch_dim = 128
@@ -209,20 +212,22 @@ class GeneFace2Infer:
         if torso_model_dir != '':
             set_hparams(
                 f"{os.path.dirname(torso_model_dir) if os.path.isfile(torso_model_dir) else torso_model_dir}/config.yaml")
+            self.hparams = copy.deepcopy(hparams)
             self.secc2video_hparams = copy.deepcopy(hparams)
-            if hparams.get("with_sr"):
-                model = RADNeRFTorsowithSR(hparams)
+            if self.hparams.get("with_sr"):
+                model = RADNeRFTorsowithSR(self.hparams)
             else:
-                model = RADNeRFTorso(hparams)
+                model = RADNeRFTorso(self.hparams)
             load_ckpt(model, f"{torso_model_dir}", model_name='model', strict=True)
         else:
             set_hparams(
                 f"{os.path.dirname(head_model_dir) if os.path.isfile(head_model_dir) else head_model_dir}/config.yaml")
+            self.hparams = copy.deepcopy(hparams)
             self.secc2video_hparams = copy.deepcopy(hparams)
-            if hparams.get("with_sr"):
-                model = RADNeRFwithSR(hparams)
+            if self.hparams.get("with_sr"):
+                model = RADNeRFwithSR(self.hparams)
             else:
-                model = RADNeRF(hparams)
+                model = RADNeRF(self.hparams)
             load_ckpt(model, f"{head_model_dir}", model_name='model', strict=True)
         self.dataset_cls = RADNeRFDataset  # the dataset only provides head pose
         self.dataset = self.dataset_cls('trainval', training=False)
@@ -250,7 +255,7 @@ class GeneFace2Infer:
         """
         sample = {}
         # Process Audio
-        wav16k_name = save_wav16k(inp['drv_audio'])
+        wav16k_name = save_wav16k(inp)
         # HuBERT 特征，它通常是一个表示音频的高维向量，形状通常是 (时间步长，特征维度)
         hubert = get_hubert(wav16k_name)
         t_x = hubert.shape[0]  # t_x 音频的时间步数（每一帧对应一个时间步）
@@ -380,7 +385,7 @@ class GeneFace2Infer:
         idexp_lm3d_ds = self.face3d_helper.reconstruct_idexp_lm3d(id_ds, exp_ds)
         idexp_lm3d_mean = idexp_lm3d_ds.mean(dim=0, keepdim=True)
         idexp_lm3d_std = idexp_lm3d_ds.std(dim=0, keepdim=True)
-        if hparams.get("normalize_cond", True):
+        if self.hparams.get("normalize_cond", True):
             idexp_lm3d_ds_normalized = (idexp_lm3d_ds - idexp_lm3d_mean) / idexp_lm3d_std
         else:
             idexp_lm3d_ds_normalized = idexp_lm3d_ds
@@ -517,7 +522,7 @@ class GeneFace2Infer:
                                                                  perturb=False, force_all_rays=False,
                                                                  T_thresh=inp['raymarching_end_threshold'],
                                                                  eye_area_percent=eye_area_percent[i],
-                                                                 **hparams)
+                                                                 **self.hparams)
                         if self.secc2video_hparams.get('with_sr', False):
                             pred_rgb = model_out['sr_rgb_map'][0].cpu()  # [c, h, w]
                         else:
@@ -540,7 +545,7 @@ class GeneFace2Infer:
                                                                  perturb=False, force_all_rays=False,
                                                                  T_thresh=inp['raymarching_end_threshold'],
                                                                  eye_area_percent=eye_area_percent[i],
-                                                                 **hparams)
+                                                                 **self.hparams)
                         if self.secc2video_hparams.get('with_sr', False):
                             pred_rgb = model_out['sr_rgb_map'][0].cpu()  # [c, h, w]
                         else:
@@ -581,16 +586,16 @@ class GeneFace2Infer:
 
         cmd = f"ffmpeg -i {tmp_out_name} -i {wav16k_name} -y -shortest -c:v libx264 -pix_fmt yuv420p -b:v 2000k -y -v quiet -shortest {inp['out_name']}"
         ret = os.system(cmd)
-        logger.info(f"Saved at {inp['out_name']}")
-        os.system(f"rm {wav16k_name}")
-        os.system(f"rm {tmp_out_name}")
-        # if ret == 0:
-        #     logger.info(f"Saved at {inp['out_name']}")
-        #     os.system(f"rm {wav16k_name}")
-        #     os.system(f"rm {tmp_out_name}")
-        # else:
-        #     raise ValueError(
-        #         f"error running {cmd}, please check ffmpeg installation, especially check whether it supports libx264!")
+        # logger.info(f"Saved at {inp['out_name']}")
+        # os.system(f"rm {wav16k_name}")
+        # os.system(f"rm {tmp_out_name}")
+        if ret == 0:
+            logger.info(f"Saved at {inp['out_name']}")
+            os.system(f"rm {wav16k_name}")
+            os.system(f"rm {tmp_out_name}")
+        else:
+            raise ValueError(
+                f"error running {cmd}, please check ffmpeg installation, especially check whether it supports libx264!")
 
     @torch.no_grad()
     def forward_system(self, batch, inp):
@@ -618,8 +623,8 @@ class GeneFace2Infer:
 
 def get_arg(torso_ckpt=None, head_ckpt=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--a2m_ckpt",
-                        default='checkpoints/audio2motion_vae')  # checkpoints/0727_audio2secc/audio2secc_withlm2d100_randomframe
+    parser.add_argument("--identity", default='default')
+    parser.add_argument("--a2m_ckpt", default='checkpoints/audio2motion_vae')  # checkpoints/0727_audio2secc/audio2secc_withlm2d100_randomframe
     parser.add_argument("--head_ckpt", default=head_ckpt)
     parser.add_argument("--postnet_ckpt", default='')
     parser.add_argument("--torso_ckpt", default=torso_ckpt)
@@ -640,6 +645,7 @@ def get_arg(torso_ckpt=None, head_ckpt=None):
                         help='write img to video upon generated, leads to slower fps, but use less memory')
     args = parser.parse_args()
     inp = {
+        'identity': args.identity,
         'a2m_ckpt': args.a2m_ckpt,
         'postnet_ckpt': args.postnet_ckpt,
         'head_ckpt': args.head_ckpt,

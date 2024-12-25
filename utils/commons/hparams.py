@@ -1,6 +1,8 @@
 import argparse
 import json
 import os
+import sys
+
 import yaml
 
 from utils.commons.os_utils import remove_file
@@ -100,7 +102,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
 
         args, unknown = parser.parse_known_args()
         if print_hparams:
-            print("| set_hparams Unknow hparams: ", unknown)
+            print("| set_hparams Unknown hparams: ", unknown)
     else:
         args = Args(config=config, exp_name=exp_name, hparams=hparams_str,
                     infer=False, validate=False, reset=False, debug=False, remove=False, start_rank=0, world_size=-1,
@@ -112,6 +114,7 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
 
     saved_hparams = {}
     args_work_dir = ''
+    ckpt_config_path = ''
     if args.exp_name != '':
         args_work_dir = f'checkpoints/{args.exp_name}'
         ckpt_config_path = f'{args_work_dir}/config.yaml'
@@ -167,8 +170,9 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
         answer = input("REMOVE old checkpoint? Y/N [Default: N]: ")
         if answer.lower() == "y":
             remove_file(args_work_dir)
-    if args_work_dir != '' and (not os.path.exists(ckpt_config_path) or args.reset) and not args.infer:
+    if args_work_dir != '' and not args.infer and (not os.path.exists(ckpt_config_path) or args.reset):
         os.makedirs(hparams_['work_dir'], exist_ok=True)
+        # 将hparams_字典对象保存到YAML格式的配置文件中
         with open(ckpt_config_path, 'w') as f:
             yaml.safe_dump(hparams_, f)
 
@@ -195,4 +199,8 @@ def set_hparams(config='', exp_name='', hparams_str='', print_hparams=True, glob
 
 
 if __name__ == '__main__':
-    set_hparams('checkpoints/1205_os_secc2planes/os_secc2plane_trigridv2/config.yaml')
+    config_path = 'checkpoints/audio2motion_vae/config.yaml'
+    # 更改工作目录到项目根目录
+    os.chdir('../../')
+    print(f"当前工作目录: {os.getcwd()}")
+    set_hparams(config_path)
