@@ -9,7 +9,7 @@ import numpy as np
 
 
 def crop_out(input_path, output_path=None, resized=True, crop_size=960, target_size=512, target_fps=25, index=0):
-    base_name = input_path.split(".")[0].split("_")[0].split("-")[0]
+    base_name = os.path.basename(input_path).split(".")[0].split("_")[0].split("-")[0]
     base_dir = os.path.dirname(input_path)
     # 初始化dlib的人脸检测器
     face_detector = dlib.get_frontal_face_detector()

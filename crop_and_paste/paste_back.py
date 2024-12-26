@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import time
 import cv2
@@ -11,9 +12,9 @@ import numpy as np
 from moviepy.editor import VideoFileClip, CompositeVideoClip, AudioFileClip
 
 
-def paste_back_by_ffmpeg(ori_path, infer_path, landmarks, output_path):
+def paste_back_by_ffmpeg(ori_path, infer_path, output_path, landmarks):
     exec_start = time.time()
-    duration, fps, total_frames = get_video_info_by_ffmpeg(infer_path)
+    duration, fps, total_frames, _, _ = get_video_info_by_ffmpeg(infer_path)
     start_x, start_y, width, height, start_frame = landmarks
     end_frame = start_frame + total_frames
     clip_start = start_frame / fps
@@ -47,10 +48,10 @@ def paste_back_by_ffmpeg(ori_path, infer_path, landmarks, output_path):
         logger.debug(f'Elapsed time: {exec_end - exec_start} seconds.')
 
 
-def paste_back_by_packages(ori_path, infer_path, landmarks, output_path):
+def paste_back_by_packages(ori_path, infer_path, output_path, landmarks):
     exec_start = time.time()
-    duration, fps, total_frames = get_video_info_by_cv2(infer_path)
-    start_x, start_y, width, height, start_frame = landmarks
+    duration, fps, total_frames, width, height = get_video_info_by_cv2(infer_path)
+    start_x, start_y, _, _, start_frame = landmarks
     end_frame = start_frame + total_frames
     clip_start = start_frame / fps
     clip_end = clip_start + duration
@@ -71,9 +72,11 @@ def paste_back_by_packages(ori_path, infer_path, landmarks, output_path):
         # 将最终视频的长度设置为音频的长度
         output_video_clip = output_video_clip.set_duration(infer_video_clip.duration)
         output_video_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
+        ori_video_clip.close()
+        infer_video_clip.close()
         logger.info(
             f"Video overlay process completed, remove infer video {infer_path}, final video saved at {output_path}.")
-        _ = os.remove(infer_path) if os.path.exists(infer_path) else None
+        os.remove(infer_path) if os.path.exists(infer_path) else None
         return output_path
     except Exception as e:
         logger.error(f"An error occurred while converting the video {infer_path}: {e}")
@@ -83,16 +86,17 @@ def paste_back_by_packages(ori_path, infer_path, landmarks, output_path):
         logger.debug(f'Elapsed time: {exec_end - exec_start} seconds.')
 
 
-def paste_back_by_packages_with_fusion(ori_path, infer_path, coordinates, output_path):
+def paste_back_by_packages_with_fusion(ori_path, infer_path, output_path, coordinates):
     exec_start = time.time()
-    base_name = infer_path.split(".")[0].split("_")[0].split("-")[0]
+    base_name = os.path.basename(infer_path).split(".")[0].split("_")[0].split("-")[0]
     base_dir = os.path.dirname(infer_path)
     frames_dir = os.path.join(base_dir, f'{base_name}_frames')
     os.makedirs(frames_dir, exist_ok=True)
     temp_output_path = output_path.replace('.mp4', '_temp.mp4')
 
-    duration, fps, total_frames = get_video_info_by_cv2(infer_path)
-    start_x, start_y, width, height, start_frame = coordinates
+    duration, fps, total_frames, _, _ = get_video_info_by_cv2(infer_path)
+    _, _, _, width, height = get_video_info_by_cv2(ori_path)
+    start_x, start_y, _, _, start_frame = coordinates
     # end_frame = start_frame + total_frames
     # clip_start = start_frame / fps
     # clip_end = clip_start + duration
@@ -127,16 +131,20 @@ def paste_back_by_packages_with_fusion(ori_path, infer_path, coordinates, output
         # subprocess.call(ffmpeg_cmd, shell=True)
         # ffmpeg_cmd = f"ffmpeg -y -i {temp_output_path} -i {infer_path} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 {output_path}"
         # subprocess.call(ffmpeg_cmd, shell=True)
-        fourcc = cv2.VideoWriter_fourcc(*'X264')  # 使用 libx264 编码
+        # fourcc = cv2.VideoWriter_fourcc(*'avc1')  # 使用 avc1 编码
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 使用 mp4 编码
         video_writer = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
         video_frames = [os.path.join(frames_dir, f) for f in sorted(os.listdir(frames_dir)) if f.endswith('.jpg')]
         # 写入所有帧到视频
-        map(video_writer.write, (cv2.imread(frame_file) for frame_file in video_frames))
+        logger.debug(f"Number of frames: {len(video_frames)}, output path: {temp_output_path}")
+        [video_writer.write(cv2.imread(frame_path)) for frame_path in video_frames]
+        video_writer.release()
         video_writer.release()
         infer_audio_clip = AudioFileClip(infer_path)
         temp_video_clip = VideoFileClip(temp_output_path)
         temp_video_clip = temp_video_clip.set_audio(infer_audio_clip)
         temp_video_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+        infer_audio_clip.close()
         logger.info(
             f"Video overlay process completed, remove infer video {infer_path}, final video saved at {output_path}.")
         os.remove(infer_path) if os.path.exists(infer_path) else None
@@ -147,6 +155,8 @@ def paste_back_by_packages_with_fusion(ori_path, infer_path, coordinates, output
     finally:
         compose_exec_end = time.time()
         compose_elapsed_time = compose_exec_end - merge_exec_end
+        os.remove(temp_output_path) if os.path.exists(temp_output_path) else None
+        shutil.rmtree(frames_dir) if os.path.exists(frames_dir) else None
         logger.debug(f"The execution time of the merge step code block is: {compose_elapsed_time} seconds")
 
 
@@ -156,7 +166,7 @@ def get_video_info_by_ffmpeg(video_path):
         'ffprobe',
         '-v', 'error',  # 禁止输出不必要的信息
         '-select_streams', 'v:0',  # 选择视频流
-        '-show_entries', 'stream=r_frame_rate,duration,nb_frames',  # 获取时长、帧率和总帧数
+        '-show_entries', 'stream=r_frame_rate,duration,nb_frames,width,height',  # 获取时长、帧率和总帧数
         '-of', 'default=noprint_wrappers=1:nokey=1',  # 输出格式设置
         video_path
     ]
@@ -164,14 +174,16 @@ def get_video_info_by_ffmpeg(video_path):
     try:
         result = subprocess.run(command, capture_output=True, check=True, text=True)
         output = result.stdout.strip().split('\n')
-        fps = eval(output[0])  # 帧率可能是 "numerator/denominator" 格式，需要转换为浮动数值
-        duration = float(output[1])  # 时长
-        total_frames = int(output[2])  # 获取总帧数
-        logger.debug(f"Video info: duration={duration}, fps={fps}, total_frames={total_frames}")
-        return duration, fps, total_frames
+        width = int(output[0])  # 获取视频宽度
+        height = int(output[1])  # 获取视频高度
+        fps = eval(output[2])  # 帧率可能是 "numerator/denominator" 格式，需要转换为浮动数值
+        duration = float(output[3])  # 时长
+        total_frames = int(output[4])  # 获取总帧数
+        logger.debug(f"Video info: duration={duration}, fps={fps}, total_frames={total_frames}, width={width}, height={height}")
+        return duration, fps, total_frames, width, height
     except subprocess.CalledProcessError as e:
         logger.error(f"Error occurred while getting video info: {e}")
-        return None, None, None
+        return None, None, None, None, None
 
 
 def get_video_info_by_cv2(video_path):
@@ -179,8 +191,10 @@ def get_video_info_by_cv2(video_path):
     fps = video_cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(video_cap.get(cv2.CAP_PROP_FRAME_COUNT))
     duration = total_frames / fps
+    width = int(video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     video_cap.release()
-    return duration, fps, total_frames
+    return duration, fps, total_frames, width, height
 
 
 def get_face_coordinates(face_detector, first_frame, first_frame_path):
@@ -283,14 +297,12 @@ if __name__ == "__main__":
     mode = "ffmpeg"
     fusion = True
     if mode == "ffmpeg":
-        final_output_video = paste_back_by_ffmpeg(ori_video_path, infer_video_path, landmarks_coords, output_video_path)
+        final_output_video = paste_back_by_ffmpeg(ori_video_path, infer_video_path, output_video_path, landmarks_coords)
     elif mode == "cv2":
         if fusion:
-            final_output_video = paste_back_by_packages(ori_video_path, infer_video_path, landmarks_coords,
-                                                        output_video_path)
+            final_output_video = paste_back_by_packages(ori_video_path, infer_video_path, output_video_path, landmarks_coords)
         else:
-            final_output_video = paste_back_by_packages_with_fusion(ori_video_path, infer_video_path, landmarks_coords,
-                                                                    output_video_path)
+            final_output_video = paste_back_by_packages_with_fusion(ori_video_path, infer_video_path, output_video_path, landmarks_coords)
     else:
         logger.error(f"Not such mode: {mode}")
         final_output_video = None

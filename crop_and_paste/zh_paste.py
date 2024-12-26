@@ -10,7 +10,7 @@ import time
 
 
 def infer_merge_video(ori_path, infer_path, coordinates, output_path):
-    base_name = infer_path.split(".")[0].split("_")[0].split("-")[0]
+    base_name = os.path.basename(infer_path).split(".")[0].split("_")[0].split("-")[0]
     base_dir = os.path.dirname(infer_path)
 
     frames_dir = os.path.join(base_dir, f'{base_name}_frames')

@@ -1,4 +1,5 @@
 import asyncio
+import concurrent
 import gc
 import json
 import os
@@ -22,7 +23,7 @@ from pydantic import BaseModel, Field, model_validator, ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
-from crop_and_paste.paste_back import paste_back_by_ffmpeg
+from crop_and_paste.paste_back import paste_back_by_ffmpeg, paste_back_by_packages, paste_back_by_packages_with_fusion
 from inference.genefacepp_infer import GeneFace2Infer, get_arg
 from utils.log_utils import logger
 from utils.uitls import read_json_file
@@ -34,8 +35,10 @@ class VideoGenerateRequest(BaseModel):
     uid: str = Field(..., description="会话ID")
     parallel: Optional[bool] = Field(None, description="是否并行")
     character: Literal["huang", "li", "yu", "gu"] = Field('huang', description="数字人形象")
-    paste: str = Field('default', description="贴回方式")
+    paste: Literal["default", "ffmpeg", "packages", "fusion"] = Field('default', description="贴回方式")
     blocking: bool = Field(False, description="是否阻塞运行推理代码")
+    video_dir: Optional[str] = Field(None, description="视频目录")
+    audio_dir: Optional[str] = Field(None, description="音频目录")
     audio_name: str = Field(..., description="音频文件名")
 
 
@@ -153,7 +156,7 @@ async def init_app():
         log = f'本次加载推理模型的设备为GPU: {torch.cuda.get_device_name(0)}.\n'
     else:
         log = '本次加载推理模型的设备为CPU.\n'
-    log += f"Service start...!"
+    log += f"Service start..."
     geneface_log.info(log)
 
 
@@ -220,7 +223,8 @@ async def get_models(infer_para, is_parallel, infer_device=None, storage_device=
             inference_info[new_character]['model'] = storage_model_instances[new_model_path]
             torch_gc()
             CURRENT_CHARACTER = new_character
-            result = {"status": "success", "message": "models loaded", "character": new_character, "device": infer_device}
+            result = {"status": "success", "message": "models loaded", "character": new_character,
+                      "device": infer_device}
             geneface_log.debug(result)
         elif not new_character == CURRENT_CHARACTER:
             geneface_log.info(f"检测到模型发生变化，正在重新初始化推理模型{new_character}到设备{infer_device}...")
@@ -232,26 +236,35 @@ async def get_models(infer_para, is_parallel, infer_device=None, storage_device=
             move_tasks = []
             # for model_path, model_instance in storage_model_instances.items():
             for character_name, character_info in inference_info.items():
+                # 后台任务
+                async def move_task(name, path, instance, device, is_thread):
+                    try:
+                        task = set_model_to_device(name, path, instance, device, thread=is_thread)
+                        await asyncio.wait_for(task, timeout=300)
+                    except asyncio.TimeoutError:
+                        logger.warning("Task canceled due to model moved timeout!")
+                    except Exception as e:
+                        logger.error(f"An error occurred: {e}")
                 model_path = character_info['torso_ckpt'] or character_info['head_ckpt']
                 model_instance = storage_model_instances[model_path]
                 if character_name == new_character or is_parallel or model_instance is None:
                     continue
                 inference_info[new_character]["target_device"] = storage_device
                 geneface_log.info(f"等待移动推理模型{Path(model_path).name}到{storage_device}...")
-                task = set_model_to_device(character_name, model_path, model_instance, storage_device, thread=True)
-                move_tasks.append(asyncio.wait_for(task, timeout=300))
-                # _ = asyncio.create_task(set_model_to_device(model_path, model_instance, storage_device, thread=True))
-                # _ = asyncio.to_thread(set_model_to_device, model_path, model_instance, storage_device, thread=True)
-                # loop = asyncio.get_event_loop()
-                # asyncio.run_coroutine_threadsafe(set_model_to_device(model_path, model_instance, storage_device, wait=True), loop)
-            _ = asyncio.gather(*move_tasks)
+                task = move_task(character_name, model_path, model_instance, storage_device, is_thread=True)
+                move_tasks.append(task)    # 后台任务
+                # _ = asyncio.create_task(move_task(character_name, model_path, model_instance, storage_device, is_thread=True))
+            # _ = asyncio.gather(*move_tasks)
+            [asyncio.create_task(task) for task in move_tasks]
             geneface_log.info(f"正在移动推理模型{Path(new_model_path).name}到{infer_device}...")
             inference_info[new_character]["target_device"] = infer_device
             inference_info[new_character]['model'] = storage_model_instances[new_model_path]
-            await set_model_to_device(new_character, new_model_path, storage_model_instances[new_model_path], infer_device)
+            await set_model_to_device(new_character, new_model_path, storage_model_instances[new_model_path],
+                                      infer_device)
             torch_gc()  # 垃圾回收
             CURRENT_CHARACTER = new_character
-            result = {"status": "success", "message": "change model", "character": new_character, "device": infer_device}
+            result = {"status": "success", "message": "change model", "character": new_character,
+                      "device": infer_device}
             geneface_log.debug(result)
         else:
             result = {"status": "success", "message": "no changes", "character": new_character, "device": infer_device}
@@ -298,40 +311,43 @@ async def set_model_to_device(character_name, model_path, model_instance, device
             if not infer_queue.empty():  # 如果队列不为空，说明有任务正在进行
                 msg = f'Model "{Path(model_path).name}" is busy. Waiting for the current task to finish.'
                 geneface_log.info(msg)
-                # infer_queue.join()  # 等待队列完成当前任务
+                # await asyncio.to_thread(infer_queue.join)  # 放到异步线程等待队列完成当前任务
                 try:
-                    await asyncio.wait_for(asyncio.to_thread(infer_queue.join), timeout=200)
-                    # await asyncio.to_thread(infer_queue.join)  # 放到异步线程等待队列完成当前任务
+                    await asyncio.wait_for(asyncio.to_thread(infer_queue.join), timeout=180)
                 except Exception as e:
+                    logger.error(e)
                     return
-            # _ = asyncio.wait_for(asyncio.to_thread(to_device), timeout=30)  # 同步会导致阻塞卡死
-            _ = asyncio.to_thread(to_device)
+            # asyncio.wait_for(asyncio.to_thread(to_device), timeout=30)  # 同步会导致阻塞卡死
+            await asyncio.to_thread(to_device)
         else:
             to_device()
     else:
-        geneface_log.info(
-            f"模型{Path(model_path).name}已在目标设备, 无需移动")
+        geneface_log.debug(f"Model {Path(model_path).name} is already on the target device, no need to move")
 
 
 async def run_inference_async(infer_para):
     paste = infer_para['paste']
     character = infer_para['character']
     blocking = infer_para['blocking']
-    final_video_path = infer_para['final_video_path']
     infer_video_path = infer_para['out_name']
+    final_video_path = infer_para['final_video_path']
     ori_video_path = inference_info[character]['ori_video']
     crop_coordinates_list = inference_info[character]['crop_coordinates']
     logs = f"inference parameters: {infer_para}"
     geneface_log.info(logs)
     loop = asyncio.get_event_loop()
-    task = loop.run_in_executor(thread_executor, infer_in_executor, infer_para)
-    _ = await task if blocking else None
-    # final_video_path = final_video_path if paste == 'default' else paste_back_by_ffmpeg(infer_video_path, ori_video_path, final_video_path, crop_coordinates_list)
-    final_video_path = final_video_path if paste == 'default' else await asyncio.to_thread(paste_back_by_ffmpeg, infer_video_path, ori_video_path, final_video_path, crop_coordinates_list)
+    task = loop.run_in_executor(thread_executor, sync_infer_in_executor, infer_para)
+    await task if blocking else None
+    paste_match = {'default': lambda *args: final_video_path, 'ffmpeg': paste_back_by_ffmpeg,
+                   'packages': paste_back_by_packages, 'fusion': paste_back_by_packages_with_fusion}
+    # final_video_path = final_video_path if paste == 'default' \
+    #     else await asyncio.to_thread(paste_match[paste], infer_video_path, ori_video_path, final_video_path,
+    #                                  crop_coordinates_list)
+    final_video_path = await asyncio.to_thread(paste_match[paste], ori_video_path, infer_video_path, final_video_path, crop_coordinates_list)
     return final_video_path
 
 
-def infer_in_executor(infer_para):
+def sync_infer_in_executor(infer_para):
     character = infer_para['character']
     is_parallel = infer_para['parallel']
     # 队列逻辑确保只有一个任务进行
@@ -342,33 +358,31 @@ def infer_in_executor(infer_para):
     def inference_task():
         with torch.no_grad():
             geneface_log.debug(f"进入推理{infer_para['out_name']}")
-            model.infer_once(infer_para) if is_parallel is None else inference_info[character]['model'].infer_once(infer_para)
+            model.infer_once(infer_para) if is_parallel is None else inference_info[character]['model'].infer_once(
+                infer_para)
 
     # with infer_lock:  # 保证队列操作线程安全
     if True:  # 模拟锁占位
-        geneface_log.debug(f"AAA {character}开始推理{infer_queue.qsize()}, {infer_lock}")
-        geneface_log.debug(f"BBB {character}开始推理{infer_queue.qsize()}")
+        # geneface_log.debug(f"AAA {character}开始推理{infer_queue.qsize()}, {infer_lock}")
+        # geneface_log.debug(f"BBB {character}开始推理{infer_queue.qsize()}")
         try:
-            # 使用 ThreadPoolExecutor 执行推理任务
+            # 使用 ThreadPoolExecutor 执行推理任务, 同步函数中使用
             future = thread_executor.submit(inference_task)
             future.result(timeout=timeout)  # 设置超时时间
-            # with torch.no_grad():
-            #     geneface_log.debug(f"进入推理{infer_para['out_name']}")
-            #     model.infer_once(infer_para) if is_parallel is None else inference_info[character]['model'].infer_once(infer_para)
-        # except concurrent.futures.TimeoutError as te:
-        #     raise RuntimeError(f"{te}: Task for {character} timed out after {timeout} seconds!")
-        # except Exception as e:
-        #     raise RuntimeError(f"Error during inference: {e}")
+        except concurrent.futures.TimeoutError as te:
+            raise RuntimeError(f"{te}: Task for character {character} timed out after {timeout} seconds!")
+        except Exception as e:
+            raise RuntimeError(f"Error during inference task for character {character} : {e}")
         finally:
             torch_gc()
             if not infer_queue.empty():
                 try:
-                    geneface_log.debug(f"CCC {character}推理结束{infer_queue.qsize()}")
+                    # geneface_log.debug(f"CCC {character}推理结束{infer_queue.qsize()}")
                     infer_queue.get()
-                    geneface_log.debug(f"DDD {character}推理结束{infer_queue.qsize()}")
-                    geneface_log.info(f"Task removed from queue for model: {character}")
+                    # geneface_log.debug(f"DDD {character}推理结束{infer_queue.qsize()}")
+                    geneface_log.debug(f"Task removed from queue for character: {character}")
                 except Exception as e:
-                    raise RuntimeError(f"Error cleaning up queue: {e}")
+                    raise ValueError(f"Error cleaning up queue: {e}")
 
 
 # def run_inference_sync(infer_para, blocking=True):
@@ -455,7 +469,7 @@ process_executor = ProcessPoolExecutor(max_workers=10)  # 设置线程池大小�
 geneface_log = logger
 geneface_app = FastAPI(lifespan=lifespan)
 # CORS 中间件配置
-geneface_app.add_middleware(BasicAuthMiddleware, secret_key=secret_key)
+# geneface_app.add_middleware(BasicAuthMiddleware, secret_key=secret_key)
 geneface_app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'],
                             allow_headers=['*'], )
 
@@ -491,20 +505,24 @@ async def generate_video(request: VideoGenerateRequest):
     character = request.character
     audio_name = request.audio_name
     is_parallel = request.parallel or parallel
+    identity = str(uuid.uuid4().hex[:8])
     infer_para = get_arg(inference_info[character]['torso_ckpt'], inference_info[character]['head_ckpt'])
     inference_info[character]['infer_queue'].put(sno)
-    video_dir = os.path.join(base_video_path, str(uid))
+    torso_ckpt = inference_info[character]['torso_ckpt']
+    head_ckpt = inference_info[character]['head_ckpt']
+    video_dir = request.video_dir or base_video_path
+    video_dir = os.path.join(video_dir, str(uid))
     os.makedirs(video_dir, exist_ok=True)
-    identity = str(uuid.uuid4().hex[:8])
-    audio_path = os.path.join(base_audio_path, audio_name)
+    audio_dir = request.audio_dir or base_audio_path
+    audio_path = os.path.join(audio_dir, audio_name)
     final_video_name = f"{identity}.mp4"
     cropped_video_name = f"{identity}.cropped.mp4"
     final_video_path = os.path.join(video_dir, final_video_name)
-    infer_video_path = os.path.join(video_dir, cropped_video_name)
-    infer_video_path = final_video_path if paste == 'default' else infer_video_path
-    infer_data = {'identity': identity, 'character': character, 'blocking': blocking, 'paste': paste, "parallel": is_parallel,
-                  'torso_ckpt': inference_info[character]['torso_ckpt'],
-                  'head_ckpt': inference_info[character]['head_ckpt'],
+    cropped_video_path = os.path.join(video_dir, cropped_video_name)
+    infer_video_path = final_video_path if paste == 'default' else cropped_video_path
+    infer_data = {'identity': identity, 'character': character, 'blocking': blocking,
+                  'paste': paste, "parallel": is_parallel,
+                  'torso_ckpt': torso_ckpt, 'head_ckpt': head_ckpt,
                   'drv_audio': audio_path, 'out_name': infer_video_path, 'final_video_path': final_video_path}
     infer_para.update(infer_data)
     phase = 0
@@ -512,13 +530,8 @@ async def generate_video(request: VideoGenerateRequest):
         if not os.path.exists(audio_path):
             msg = f'The audio file does not exist:{audio_path}!'
             raise FileNotFoundError(msg)
-        _ = await refresh_models(infer_para) if is_parallel is None else await get_models(infer_para, is_parallel)
-        # 如果需要阻塞以同步运行, 使用 asyncio.to_thread 使用线程异步运行同步推理函数, await等待完成
-        # task = asyncio.wait_for(asyncio.to_thread(run_inference_sync, infer_data, blocking), timeout=300)
-        # task = asyncio.wait_for(run_inference_async(infer_data), timeout=30)
-        # infer_thread = threading.Thread(target=run_inference_sync, args=(infer_data,))
-        # infer_thread.start()
-        _ = await run_inference_async(infer_para)
+        await refresh_models(infer_para) if is_parallel is None else await get_models(infer_para, is_parallel)
+        await run_inference_async(infer_para)
         code = 0
         (phase, msg) = (2, "infer successful!") if blocking else (1, "infer starting...")
         video_data = [VideoData(video_dir=video_dir, video_name=f'{identity}.mp4')]
@@ -528,22 +541,13 @@ async def generate_video(request: VideoGenerateRequest):
         return JSONResponse(status_code=200, content=result.model_dump())
     except (json.JSONDecodeError, FileNotFoundError, asyncio.TimeoutError, RuntimeError, ValueError) as exception:
         # 定义一个映射关系，用于处理不同异常类型对应的 HTTP 状态码
-        exception_to_status = {
-            json.JSONDecodeError: 400,
-            ValueError: 400,
-            FileNotFoundError: 404,
-            asyncio.TimeoutError: 500,
-            RuntimeError: 500,
-        }
+        exception_to_status = {json.JSONDecodeError: 400, ValueError: 400, FileNotFoundError: 404,
+                               asyncio.TimeoutError: 500, RuntimeError: 500}
         code = -1
         status_code = exception_to_status.get(type(exception), 500)
         msg = f"{type(exception).__name__}: {str(exception)}"
-        error_message = VideoRetrieveResponse(
-            code=code,
-            phase=phase,
-            msg=msg,
-        )
-        logs = f"Retrieve response error: {error_message}"
+        error_message = VideoRetrieveResponse(code=code, phase=phase, msg=msg)
+        logs = f"Inference response error: {error_message}"
         geneface_log.error(logs)
         return JSONResponse(status_code=status_code, content=error_message.model_dump())
 
@@ -567,32 +571,18 @@ async def retrieve_video(request: VideoRetrieveRequest):
         (code, msg) = (0, f"Successfully retrieved {len(sorted_files)} video files") if sorted_files else (
             1, "No videos found")
         video_data = [VideoData(video_name=video_name, video_dir=video_dir) for video_name in sorted_files]
-        result = VideoRetrieveResponse(
-            sno=sno,
-            phase=phase,
-            code=code,
-            msg=msg,
-            data=video_data)
+        result = VideoRetrieveResponse(sno=sno, phase=phase, code=code, msg=msg, data=video_data)
         logs = f"Retrieve response results: {result.model_dump()}"
         geneface_log.info(logs)
         return JSONResponse(status_code=200, content=result.model_dump())
     except (json.JSONDecodeError, FileNotFoundError, asyncio.TimeoutError, RuntimeError, ValueError) as exception:
         # 定义一个映射关系，用于处理不同异常类型对应的 HTTP 状态码
-        exception_to_status = {
-            json.JSONDecodeError: 400,
-            ValueError: 400,
-            FileNotFoundError: 404,
-            asyncio.TimeoutError: 500,
-            RuntimeError: 500,
-        }
+        exception_to_status = {json.JSONDecodeError: 400, ValueError: 400, FileNotFoundError: 404,
+                               asyncio.TimeoutError: 500, RuntimeError: 500}
         code = -1
         status_code = exception_to_status.get(type(exception), 500)
         msg = f"{type(exception).__name__}: {str(exception)}"
-        error_message = VideoRetrieveResponse(
-            code=code,
-            phase=phase,
-            msg=msg,
-        )
+        error_message = VideoRetrieveResponse(code=code, phase=phase, msg=msg)
         logs = f"Retrieve response error: {error_message}"
         geneface_log.error(logs)
         return JSONResponse(status_code=status_code, content=error_message.model_dump())
@@ -626,57 +616,47 @@ async def websocket_endpoint(websocket: WebSocket):
                 character = request.character
                 audio_name = request.audio_name
                 is_parallel = request.parallel or parallel
+                identity = str(uuid.uuid4().hex[:8])
                 infer_para = get_arg(inference_info[character]['torso_ckpt'], inference_info[character]['head_ckpt'])
                 inference_info[character]['infer_queue'].put(sno)
-                video_dir = os.path.join(base_video_path, str(uid))
+                torso_ckpt = inference_info[character]['torso_ckpt']
+                head_ckpt = inference_info[character]['head_ckpt']
+                video_dir = request.video_dir or base_video_path
+                video_dir = os.path.join(video_dir, str(uid))
                 os.makedirs(video_dir, exist_ok=True)
-                video_id = str(uuid.uuid4().hex[:8])
-                audio_path = os.path.join(base_audio_path, audio_name)
-                final_video_name = f"{video_id}.mp4"
-                cropped_video_name = f"{video_id}.cropped.mp4"
+                audio_dir = request.audio_dir or base_audio_path
+                audio_path = os.path.join(audio_dir, audio_name)
+                final_video_name = f"{identity}.mp4"
+                cropped_video_name = f"{identity}.cropped.mp4"
                 final_video_path = os.path.join(video_dir, final_video_name)
-                infer_video_path = os.path.join(video_dir, cropped_video_name)
-                infer_video_path = final_video_path if paste == 'default' else infer_video_path
-                infer_data = {'character': character, 'blocking': blocking, 'paste': paste,
-                              'torso_ckpt': inference_info[character]['torso_ckpt'],
-                              'head_ckpt': inference_info[character]['head_ckpt'],
+                cropped_video_path = os.path.join(video_dir, cropped_video_name)
+                infer_video_path = final_video_path if paste == 'default' else cropped_video_path
+                infer_data = {'identity': identity, 'character': character, 'blocking': blocking,
+                              'paste': paste, "parallel": is_parallel,
+                              'torso_ckpt': torso_ckpt, 'head_ckpt': head_ckpt,
                               'drv_audio': audio_path, 'out_name': infer_video_path,
                               'final_video_path': final_video_path}
                 infer_para.update(infer_data)
                 if not os.path.exists(audio_path):
                     msg = f'The audio file does not exist:{audio_path}!'
                     raise FileNotFoundError(msg)
-
                 # 刷新或加载模型
-                _ = await refresh_models(infer_para) if is_parallel is None else await get_models(infer_para, is_parallel)
+                await refresh_models(infer_para) if is_parallel is None else await get_models(infer_para, is_parallel)
                 # 返回推理开始的消息
                 msg = "Inference starting..."
                 code = 0
                 phase = 1
-                video_data = [VideoData(video_dir=video_dir, video_name=f'{video_id}.mp4')]
+                video_data = [VideoData(video_dir=video_dir, video_name=f'{identity}.mp4')]
                 result = VideoGenerateResponse(sno=sno, phase=phase, code=code, msg=msg, data=video_data)
                 logs = f"Inference response results: {result.model_dump()}"
                 geneface_log.info(logs)
                 await websocket.send_json(result.model_dump())
-                infer_data = {"uid": uid, "character": character, "paste": paste,
-                              "audio_path": audio_path, "video_dir": video_dir, "video_id": video_id}
-                # # 启动推理线程
-                # infer_thread = threading.Thread(target=run_inference_sync, args=(infer_data,))
-                # infer_thread.start()
-                # 使用 asyncio.to_thread 调用推理函数
-                # await asyncio.wait_for(run_inference_async(infer_data), timeout=30)
-                # await asyncio.wait_for(asyncio.to_thread(run_inference_sync, infer_data), timeout=30)
-                _ = await run_inference_async(infer_para)
+                await run_inference_async(infer_para)
                 msg = "Inference success"
                 code = 0
                 phase = 2
-                video_data = [VideoData(video_dir=video_dir, video_name=f'{video_id}.mp4')]
-                result = VideoRetrieveResponse(
-                    sno=sno,
-                    phase=phase,
-                    code=code,
-                    msg=msg,
-                    data=video_data)
+                video_data = [VideoData(video_dir=video_dir, video_name=f'{identity}.mp4')]
+                result = VideoRetrieveResponse(sno=sno, phase=phase, code=code, msg=msg, data=video_data)
                 logs = f"Retrieve response results: {result.model_dump()}"
                 geneface_log.info(logs)
                 await websocket.send_json(result.model_dump())
@@ -684,12 +664,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 code = -1
                 error_type = type(e).__name__
                 msg = f'{error_type}: {e}'
-                error_message = VideoRetrieveResponse(
-                    code=code,
-                    phase=phase,
-                    msg=msg,
-                )
-                logs = f"Retrieve response error: {error_message}"
+                error_message = VideoRetrieveResponse(code=code, phase=phase, msg=msg)
+                logs = f"Inference response error: {error_message}"
                 geneface_log.error(logs)
                 await websocket.send_json(error_message)
     except WebSocketDisconnect:
