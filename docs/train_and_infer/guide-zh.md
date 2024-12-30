@@ -27,15 +27,15 @@ CUDA_VISIBLE_DEVICES=0 python tasks/run.py --config=egs/datasets/May/lm3d_radner
 ## 命令行推理
 ```
 # 使用我们提供的推理脚本.
-CUDA_VISIBLE_DEVICES=0  python inference/genefacepp_infer.py --head_ckpt= --torso_ckpt=motion2video_nerf/may_torso --drv_aud=data/raw/audios/MacronSpeech.wav
+CUDA_VISIBLE_DEVICES=0  python inference/genefacepp_infer.py --head_ckpt= --torso_ckpt=checkpoints/motion2video_nerf/may_torso --drv_aud=data/raw/audios/MacronSpeech.wav
 
 # --debug 选项可以可视化一些中间过程与特征
-CUDA_VISIBLE_DEVICES=0  python inference/genefacepp_infer.py --head_ckpt= --torso_ckpt=motion2video_nerf/may_torso --drv_aud=data/raw/audios/MacronSpeech.wav --debug
+CUDA_VISIBLE_DEVICES=0  python inference/genefacepp_infer.py --head_ckpt= --torso_ckpt=checkpoints/motion2video_nerf/may_torso --drv_aud=data/raw/audios/MacronSpeech.wav --debug
 ```
 
 ## Gradio WebGUI Demo 
 ```
-CUDA_VISIBLE_DEVICES=0 python inference/app_genefacepp.py --a2m_ckpt=checkpoints/audio2motion_vae --head_ckpt= --torso_ckpt=motion2video_nerf/may_torso
+CUDA_VISIBLE_DEVICES=0 python inference/app_genefacepp.py --a2m_ckpt=checkpoints/audio2motion_vae --head_ckpt= --torso_ckpt=checkpoints/motion2video_nerf/may_torso
 ```
 
 <p align="center">

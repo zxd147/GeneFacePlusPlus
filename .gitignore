@@ -2,13 +2,6 @@
 data_util/face_tracking/3DMM/01_MorphableModel.mat
 data_util/face_tracking/3DMM/3DMM_info.npy
 
-!/deep_3drecon/BFM/.gitkeep
-deep_3drecon/BFM/Exp_Pca.bin
-deep_3drecon/BFM/01_MorphableModel.mat
-deep_3drecon/BFM/BFM_model_front.mat
-deep_3drecon/network/FaceReconModel.pb
-deep_3drecon/checkpoints/*
-
 .vscode
 ### Project ignore
 /checkpoints/*
@@ -166,6 +159,19 @@ dmypy.json
 # Pyre type checker
 .pyre/
 data_util/deepspeech_features/deepspeech-0.9.2-models.pbmm
+
+!/deep_3drecon/BFM/.gitkeep
+deep_3drecon/BFM/01_MorphableModel.mat
+deep_3drecon/BFM/BFM_exp_idx.mat
+deep_3drecon/BFM/BFM_front_idx.mat
+deep_3drecon/BFM/BFM_model_front.mat
+deep_3drecon/BFM/Exp_Pca.bin
+deep_3drecon/BFM/facemodel_info.mat
+deep_3drecon/BFM/index_mp468_from_mesh35709.npy
+deep_3drecon/BFM/std_exp.txt
+deep_3drecon/BFM/mediapipe_in_bfm53201.npy
+deep_3drecon/checkpoints/*
+deep_3drecon/network/FaceReconModel.pb
 deep_3drecon/mesh_renderer/bazel-bin
 deep_3drecon/mesh_renderer/bazel-mesh_renderer
 deep_3drecon/mesh_renderer/bazel-out
@@ -204,11 +210,12 @@ ijcai_test_data/*
 infer_general3d_oneshot.py
 infer_general3d_person_specifc.py
 
-deep_3drecon/BFM/BFM_exp_idx.mat
-deep_3drecon/BFM/BFM_front_idx.mat
-deep_3drecon/BFM/facemodel_info.mat
-deep_3drecon/BFM/index_mp468_from_mesh35709.npy
-deep_3drecon/BFM/mediapipe_in_bfm53201.npy
-deep_3drecon/BFM/std_exp.txt
+!logs/.gitkeep
 temp
 output
+
+hubert-large-ls960-ft
+
+Docker/*
+!Docker/example.Dockerfile
+

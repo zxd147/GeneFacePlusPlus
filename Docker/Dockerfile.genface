@@ -21,7 +21,6 @@ WORKDIR /workspace
 RUN apt update -y && apt-get install -y libasound2-dev portaudio19-dev libgl1 && \
     pip install -r docs/prepare_env/requirements.txt -v
 
-
 # install torch-ngp extension
 RUN bash docs/prepare_env/install_ext.sh 
 

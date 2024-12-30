@@ -4,7 +4,7 @@ import os
 import time
 from queue import Queue
 
-from config.uitls import read_json_file
+from utils.uitls import read_json_file
 from inference.genefacepp_infer import GeneFace2Infer
 
 data_json = read_json_file("config/config.json")

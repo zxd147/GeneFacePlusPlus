@@ -1,19 +1,18 @@
-import os, sys
-
-sys.path.append('./')
 import argparse
-import gradio as gr
-from inference.genefacepp_infer import GeneFace2Infer
-from utils.commons.hparams import hparams
+import os
 import random
 import time
+
+import gradio as gr
+
+from inference.genefacepp_infer import GeneFace2Infer
 
 
 class Inferer(GeneFace2Infer):
     def infer_once_args(self, *args, **kargs):
         assert len(kargs) == 0
         keys = [
-            'drv_audio_name',
+            'drv_audio',
             'blink_mode',
             'temperature',
             'lle_percent',
@@ -38,7 +37,7 @@ class Inferer(GeneFace2Infer):
                 if '_name' in key or '_ckpt' in key:
                     inp[key] = inp[key] if inp[key] is not None else ''
 
-            if inp['drv_audio_name'] == '':
+            if inp['drv_audio'] == '':
                 info = "Input Error: Driving audio is REQUIRED!"
                 raise ValueError
 
@@ -101,7 +100,7 @@ class Inferer(GeneFace2Infer):
 
 
 def toggle_audio_file(choice):
-    if choice == False:
+    if not choice:
         return gr.update(visible=True), gr.update(visible=False)
     else:
         return gr.update(visible=False), gr.update(visible=True)
@@ -150,7 +149,7 @@ def genefacepp_demo(
             <div align='center'> <h2> GeneFace++: Generalized and Stable Real-Time Audio-Driven 3D Talking Face Generation </span> </h2> \
             <a style='font-size:18px;color: #a0a0a0' href='https://arxiv.org/pdf/2305.00787.pdf'>Arxiv</a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; \
             <a style='font-size:18px;color: #a0a0a0' href='https://baidu.com'>Homepage</a>  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; \
-            <a style='font-size:18px;color: #a0a0a0' href='https://baidu.com'> Github </div>")
+            <a style='font-size:18px;color: #a0a0a0' href='https://github.com/yerfor/GeneFacePlusPlus'> Github </div>")
 
         sources = None
         with gr.Row():
@@ -158,7 +157,7 @@ def genefacepp_demo(
                 with gr.Tabs(elem_id="driven_audio"):
                     with gr.TabItem('Upload audio'):
                         with gr.Column(variant='panel'):
-                            drv_audio_name = gr.Audio(label="Input audio (required)", sources=sources, type="filepath",
+                            drv_audio = gr.Audio(label="Input audio (required)", sources=sources, type="filepath",
                                                       value='data/raw/audios/MacronSpeech.wav')
 
             with gr.Column(variant='panel'):
@@ -169,10 +168,12 @@ def genefacepp_demo(
                         with gr.Column(variant='panel'):
                             blink_mode = gr.Radio(['none', 'period'], value='none', label='blink mode',
                                                   info="whether to blink periodly")
-                            # blink_mode = gr.Radio(['none', 'period'], value='period', label='blink mode', info="whether to blink periodly")       
+                            # blink_mode = gr.Radio(['none', 'period'], value='period', label='blink mode',
+                            # info="whether to blink periodly")
                             lle_percent = gr.Slider(minimum=0.0, maximum=1.0, step=0.025, label="lle_percent",
                                                     value=0.0,
-                                                    info='higher-> drag pred.landmark closer to the training video\'s landmark set', )
+                                                    info='higher-> drag pred.landmark closer to the training video\'s '
+                                                         'landmark set', )
                             temperature = gr.Slider(minimum=0.0, maximum=1.0, step=0.025, label="temperature",
                                                     value=0.0, info='audio to secc temperature', )
                             mouth_amp = gr.Slider(minimum=0.0, maximum=1.0, step=0.025, label="mouth amplitude",
@@ -183,7 +184,8 @@ def genefacepp_demo(
                                                                   info='increase it to improve inference speed', )
                             fp16 = gr.Checkbox(label="Whether to utilize fp16 to speed up inference")
                             low_memory_usage = gr.Checkbox(
-                                label="Low Memory Usage Mode: save memory at the expense of lower inference speed. Useful when running a low audio (minutes-long).",
+                                label="Low Memory Usage Mode: save memory at the expense of lower inference speed. "
+                                      "Useful when running a low audio (minutes-long).",
                                 value=False)
 
                             submit = gr.Button('Generate', elem_id="generate", variant='primary')
@@ -217,7 +219,7 @@ def genefacepp_demo(
         submit.click(
             fn=fn,
             inputs=[
-                drv_audio_name,
+                drv_audio,
                 blink_mode,
                 temperature,
                 lle_percent,
@@ -245,13 +247,13 @@ def genefacepp_demo(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--a2m_ckpt", type=str, default='checkpoints/audio2motion_vae/model_ckpt_steps_400000.ckpt')
+    parser.add_argument("--a2m_ckpt", type=str, default='checkpoints/audio2motion_vae/model_ckpt_steps_500000.ckpt')
     parser.add_argument("--postnet_ckpt", type=str, default='')
     parser.add_argument("--head_ckpt", type=str, default='')
     parser.add_argument("--torso_ckpt", type=str,
-                        default='checkpoints/motion2video_nerf/may_torso/model_ckpt_steps_250000.ckpt')
+                        default='checkpoints/motion2video_nerf/gu_torso/model_ckpt_steps_250000.ckpt')
     parser.add_argument("--port", type=int, default=None)
-    parser.add_argument("--server", type=str, default='127.0.0.1')
+    parser.add_argument("--server", type=str, default='0.0.0.0')
 
     args = parser.parse_args()
     demo = genefacepp_demo(

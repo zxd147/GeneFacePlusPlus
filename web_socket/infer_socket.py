@@ -11,7 +11,7 @@ import websockets
 from minio import Minio
 from websockets import exceptions
 
-from config.uitls import read_json_file
+from utils.uitls import read_json_file
 from inference.genefacepp_infer import GeneFace2Infer
 
 # 创建日志记录器

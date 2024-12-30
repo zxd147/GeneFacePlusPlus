@@ -56,6 +56,7 @@ def vis_cano_lm3d_to_imgs(cano_lm3d, hw=512):
     WH = hw
     cano_lm3d = (cano_lm3d * WH / 2 + WH / 2).astype(int)
     frame_lst = []
+    font = cv2.FONT_HERSHEY_SIMPLEX  # 先赋值给 font, 指定在图像上绘制文本时使用的字体
     for i_img in range(len(cano_lm3d)):
         # lm2d = cano_lm3d[i_img ,:, 1:] # [68, 2]
         lm2d = cano_lm3d[i_img, :, :2]  # [68, 2]
@@ -117,7 +118,7 @@ def inject_blink_to_lm68(lm68, opened_eye_area_percent=0.6, closed_eye_area_perc
 
 
 def save_wav16k(inp):
-    identity = inp['identity']
+    identity = inp.get('identity', 'user')
     audio_name = inp['drv_audio']
     supported_types = ('.wav', '.mp3', '.mp4', '.avi')
     assert audio_name.endswith(supported_types), f"Now we only support {','.join(supported_types)} as audio source!"

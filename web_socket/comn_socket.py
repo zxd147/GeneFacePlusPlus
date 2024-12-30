@@ -7,7 +7,7 @@ import time
 from flask import Flask, request
 from flask_cors import CORS
 
-from config.uitls import read_json_file
+from utils.uitls import read_json_file
 
 
 app = Flask(__name__)
@@ -17,21 +17,20 @@ remote_dict = {}
 ip_mapping = {}
 text_mapping = {}
 SNO_START = 123
-data = read_json_file('config/config.json')
-base_video_path = data['base_video_path']
-base_audio_path = data['base_audio_path']
-socket_host = data['socket_ip_host']
-socket_port = data['socket_ip_port']
-stream_url = data['rtsp_url']
-isBusy = False
-gWsk_remote = None
 data_json = read_json_file('config/config.json')
+base_video_path = data_json['base_video_path']
+base_audio_path = data_json['base_audio_path']
+socket_host = data_json['socket_ip_host']
+socket_port = data_json['socket_ip_port']
+stream_url = data_json['rtsp_url']
 socket_ip = data_json['socket_ip_host']
 access_key = data_json['access_key']
 secret_key = data_json['secret_key']
 upload_server = data_json['api_server_name']
 message_queue = queue.Queue()
 inference_queue = queue.Queue()
+isBusy = False
+gWsk_remote = None
 
 
 def send_data_to_modeler(inference_info):
@@ -61,12 +60,12 @@ def send_data_to_modeler(inference_info):
 
 @app.route("/inference", methods=['POST'])
 def receive_data():
-    data_json = request.get_json()
-    audio_name = data_json['audio_name']  # 只需要XXX.WAV 即可
-    project_type = data_json['project_type']
-    session_id = data_json['uid']
-
     global remote_dict
+    request_data = request.get_json()
+    audio_name = request_data['audio_name']  # 只需要XXX.WAV 即可
+    project_type = request_data['project_type']
+    session_id = request_data['uid']
+
     if session_id == "dentist":
         remote_dict.setdefault(session_id, request.remote_addr)
         print(f"remote = {remote_dict[session_id]}" if
