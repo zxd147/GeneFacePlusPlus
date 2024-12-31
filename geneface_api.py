@@ -469,7 +469,7 @@ process_executor = ProcessPoolExecutor(max_workers=10)  # 设置线程池大小�
 geneface_log = logger
 geneface_app = FastAPI(lifespan=lifespan)
 # CORS 中间件配置
-geneface_app.add_middleware(BasicAuthMiddleware, sk=secret_key)
+# geneface_app.add_middleware(BasicAuthMiddleware, sk=secret_key)
 geneface_app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'],
                             allow_headers=['*'], )
 
@@ -677,5 +677,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     asyncio.run(init_app())
-    # uvicorn.run(geneface_app, host=host, port=8042)
     uvicorn.run(geneface_app, host=host, port=int(port))
