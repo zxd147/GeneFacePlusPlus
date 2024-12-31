@@ -15,7 +15,7 @@ async def send_request(character: str, audio_name: str):
     data = {
         "uid": "1226",
         "character": character,
-        "paste": "default",
+        "paste": "ffmpeg",
         # "parallel": False,
         "blocking": True,
         "audio_name": audio_name

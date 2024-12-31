@@ -60,7 +60,7 @@ s3prl==0.4.11
 fire
 
 # cal LMD
-# dlib
+dlib==19.24.2
 
 # debug
 ipykernel
@@ -73,4 +73,5 @@ setproctitle
 # Gradio GUI
 httpx==0.28.1
 gradio==4.44.1
+loguru==0.7.2
 
