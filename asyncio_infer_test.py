@@ -11,11 +11,12 @@ async def send_request(character: str, audio_name: str):
     headers = {
         'User-Agent': 'Apifox/1.0.0 (https://apifox.com)',
         'Content-Type': 'application/json',
+        'Authorization': 'Bearer sk-geneface',
     }
     data = {
-        "uid": "1226",
+        "uid": "1231",
         "character": character,
-        "paste": "ffmpeg",
+        "paste": "packages",
         # "parallel": False,
         "blocking": True,
         "audio_name": audio_name

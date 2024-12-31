@@ -13,5 +13,5 @@ logger.remove()
 # log_format = "<g>{time:MM-DD HH:mm:ss}</g> <lvl>{level:<9}</lvl>| {file}:{line} | {message}"
 log_format = "<g>{time:MM-DD HH:mm:ss}</g> <lvl>{level:<9}</lvl>| {message}"
 
-# logger.add(sys.stdout, level="INFO", format=log_format, backtrace=True, diagnose=True)
-logger.add(sys.stdout, level="DEBUG", format=log_format, backtrace=True, diagnose=True)
+# logger.add(sys.stdout, level="DEBUG", format=log_format, backtrace=True, diagnose=True)
+logger.add(sys.stdout, level="INFO", format=log_format, backtrace=True, diagnose=True)
